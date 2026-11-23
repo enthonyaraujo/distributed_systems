@@ -6,6 +6,10 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { useWorkspace } from "../context/WorkspaceContext";
 import type { Page, ProseMirrorDoc } from "../types/page";
 import {
+  canStartAutosave,
+  resolvePostSaveState,
+} from "../utils/autosaveState";
+import {
   validatePageContentSize,
   validatePageIcon,
   validatePageTitle,
@@ -34,25 +38,43 @@ export function PageEditorPage() {
 
   const versionRef = useRef<number>(1);
   const dirtyRef = useRef<boolean>(false);
+  const savingRef = useRef<boolean>(false);
+  const editSeqRef = useRef<number>(0);
+  const loadSeqRef = useRef<number>(0);
+  const activePageIdRef = useRef<string | undefined>(pageId);
   const latestDraftRef = useRef<{
     title: string;
     icon: string;
     content: ProseMirrorDoc | null;
   }>({ title: "", icon: "📄", content: null });
 
+  useEffect(() => {
+    activePageIdRef.current = pageId;
+  }, [pageId]);
+
   const loadPage = useCallback(async () => {
     if (!pageId) return;
+    const requestSeq = ++loadSeqRef.current;
+    const targetPageId = pageId;
     setLoading(true);
     setLoadError(null);
     setSaveError(null);
     try {
-      const loaded = await pagesApi.getPage(pageId);
+      const loaded = await pagesApi.getPage(targetPageId);
+      if (
+        loadSeqRef.current !== requestSeq ||
+        activePageIdRef.current !== targetPageId
+      ) {
+        return;
+      }
       setPage(loaded);
       setTitle(loaded.title);
       setIcon(loaded.icon);
       setContent(loaded.content);
       versionRef.current = loaded.version;
       dirtyRef.current = false;
+      savingRef.current = false;
+      editSeqRef.current += 1;
       latestDraftRef.current = {
         title: loaded.title,
         icon: loaded.icon,
@@ -62,6 +84,12 @@ export function PageEditorPage() {
       setEditorResetKey((k) => k + 1);
       upsertPageSummary(loaded);
     } catch (err) {
+      if (
+        loadSeqRef.current !== requestSeq ||
+        activePageIdRef.current !== targetPageId
+      ) {
+        return;
+      }
       if (err instanceof AuthSessionExpiredError) return;
       setPage(null);
       setLoadError(
@@ -72,7 +100,9 @@ export function PageEditorPage() {
             : "Erro ao carregar a página."
       );
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === requestSeq) {
+        setLoading(false);
+      }
     }
   }, [pageId, pagesApi, upsertPageSummary]);
 
@@ -81,7 +111,9 @@ export function PageEditorPage() {
   }, [loadPage]);
 
   const persistDraft = useCallback(async () => {
-    if (!pageId || !dirtyRef.current) return;
+    if (!pageId || !canStartAutosave(savingRef.current, dirtyRef.current)) {
+      return;
+    }
     const draft = latestDraftRef.current;
     if (!draft.content) return;
 
@@ -95,21 +127,34 @@ export function PageEditorPage() {
       return;
     }
 
+    const targetPageId = pageId;
+    const seqAtSaveStart = editSeqRef.current;
+    savingRef.current = true;
     setSaveState("saving");
     setSaveError(null);
     try {
-      const updated = await pagesApi.updatePage(pageId, {
+      const updated = await pagesApi.updatePage(targetPageId, {
         title: draft.title.trim(),
         icon: draft.icon.trim() || "📄",
         content: draft.content,
         expectedVersion: versionRef.current,
       });
+      upsertPageSummary(updated);
+      if (activePageIdRef.current !== targetPageId) {
+        return;
+      }
       versionRef.current = updated.version;
       setPage(updated);
-      upsertPageSummary(updated);
-      dirtyRef.current = false;
-      setSaveState("saved");
+      const transition = resolvePostSaveState(
+        seqAtSaveStart,
+        editSeqRef.current
+      );
+      dirtyRef.current = transition.stillDirty;
+      setSaveState(transition.nextSaveState);
     } catch (err) {
+      if (activePageIdRef.current !== targetPageId) {
+        return;
+      }
       if (err instanceof AuthSessionExpiredError) return;
       if (err instanceof PageConflictError) {
         setSaveState("conflict");
@@ -122,8 +167,23 @@ export function PageEditorPage() {
           ? err.message
           : "Falha ao salvar a página."
       );
+    } finally {
+      if (activePageIdRef.current === targetPageId) {
+        savingRef.current = false;
+      }
     }
   }, [pageId, pagesApi, upsertPageSummary]);
+
+  // Warn before accidental tab reload/close while edits have not been persisted yet
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current && !savingRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   // Debounced auto-save (1.5s after idle edit)
   useEffect(() => {
@@ -144,6 +204,7 @@ export function PageEditorPage() {
       icon: next.icon ?? latestDraftRef.current.icon,
       content: next.content ?? latestDraftRef.current.content,
     };
+    editSeqRef.current += 1;
     dirtyRef.current = true;
     setSaveState("dirty");
     setSaveError(null);
@@ -271,6 +332,7 @@ export function PageEditorPage() {
               key={preset}
               type="button"
               className={`icon-choice ${icon === preset ? "is-selected" : ""}`}
+              disabled={saveState === "conflict"}
               onClick={() => {
                 setIcon(preset);
                 markDirty({ icon: preset });
@@ -291,6 +353,7 @@ export function PageEditorPage() {
           className="document-title-input"
           value={title}
           maxLength={120}
+          disabled={saveState === "conflict"}
           placeholder="Título da página..."
           onChange={(e) => {
             const next = e.target.value;

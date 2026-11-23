@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
@@ -34,6 +35,12 @@ export function RichTextEditor({
       onChange(instance.getJSON() as ProseMirrorDoc);
     },
   });
+
+  useEffect(() => {
+    if (editor && editor.isEditable !== !disabled) {
+      editor.setEditable(!disabled);
+    }
+  }, [editor, disabled]);
 
   if (!editor) {
     return (

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useWorkspace } from "../context/WorkspaceContext";
+import { PageConflictError } from "../api/pagesApi";
 import { ApiClientError, AuthSessionExpiredError } from "../api/tasksApi";
 import type { PageSummary } from "../types/page";
+import { validatePageTitle } from "../utils/pageValidation";
 
 export function PagesIndexPage() {
   const {
@@ -41,18 +43,33 @@ export function PagesIndexPage() {
 
   async function handleRename(page: PageSummary) {
     const nextTitle = window.prompt("Novo título da página:", page.title);
-    if (!nextTitle || nextTitle.trim() === page.title) return;
+    if (nextTitle === null) return;
+    const trimmed = nextTitle.trim();
+    if (trimmed === page.title) return;
+
+    const validationError = validatePageTitle(trimmed);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     setBusyId(page.id);
     setError(null);
     try {
       const updated = await pagesApi.updatePage(page.id, {
-        title: nextTitle.trim(),
+        title: trimmed,
         expectedVersion: page.version,
       });
       upsertPageSummary(updated);
     } catch (err) {
       if (err instanceof AuthSessionExpiredError) return;
+      if (err instanceof PageConflictError) {
+        setError(
+          "A página foi alterada em outra sessão. A lista foi atualizada; tente renomear novamente."
+        );
+        void refreshPages();
+        return;
+      }
       setError(
         err instanceof ApiClientError
           ? err.message

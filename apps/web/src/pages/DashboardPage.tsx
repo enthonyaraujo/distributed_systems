@@ -56,7 +56,7 @@ export function DashboardPage() {
     void loadTasks();
   }, [loadTasks]);
 
-  async function handleSaveTask(input: CreateTaskInput) {
+  async function handleSaveTask(input: CreateTaskInput): Promise<boolean> {
     setSubmitting(true);
     setError(null);
     try {
@@ -70,13 +70,15 @@ export function DashboardPage() {
         const created = await api.createTask(input);
         setTasks((prev) => [created, ...prev]);
       }
+      return true;
     } catch (err) {
-      if (err instanceof AuthSessionExpiredError) return;
+      if (err instanceof AuthSessionExpiredError) return false;
       setError(
         err instanceof ApiClientError
           ? err.message
           : "Erro inesperado ao salvar atividade."
       );
+      return false;
     } finally {
       setSubmitting(false);
     }

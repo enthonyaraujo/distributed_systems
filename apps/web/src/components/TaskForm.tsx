@@ -10,7 +10,7 @@ import { validateTaskForm } from "../utils/validation";
 interface TaskFormProps {
   editingTask: Task | null;
   submitting: boolean;
-  onSubmit: (input: CreateTaskInput) => Promise<void>;
+  onSubmit: (input: CreateTaskInput) => Promise<boolean>;
   onCancelEdit: () => void;
 }
 
@@ -62,8 +62,8 @@ export function TaskForm({
     }
 
     setLocalError(null);
-    await onSubmit(payload);
-    if (!editingTask) {
+    const saved = await onSubmit(payload);
+    if (saved && !editingTask) {
       setTitle("");
       setDescription("");
       setDueDate("");

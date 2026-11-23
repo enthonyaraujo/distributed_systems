@@ -20,7 +20,7 @@ export function TasksPage() {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-  async function handleSaveTask(input: CreateTaskInput) {
+  async function handleSaveTask(input: CreateTaskInput): Promise<boolean> {
     setSubmitting(true);
     setActionError(null);
     try {
@@ -34,13 +34,15 @@ export function TasksPage() {
         const created = await tasksApi.createTask(input);
         setTasks((prev) => [created, ...prev]);
       }
+      return true;
     } catch (err) {
-      if (err instanceof AuthSessionExpiredError) return;
+      if (err instanceof AuthSessionExpiredError) return false;
       setActionError(
         err instanceof ApiClientError
           ? err.message
           : "Erro inesperado ao salvar atividade."
       );
+      return false;
     } finally {
       setSubmitting(false);
     }
