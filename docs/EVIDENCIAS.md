@@ -38,6 +38,27 @@
 
 ## 2. Registro de Testes Automatizados
 
+### 23/11/2026 — Hardening Controlado em Produção (Etapas 1 a 4)
+> **Escopo:** Execução sequencial das alterações autorizadas de segurança e privacidade (Lambda `acadflow-api` v1 com `SEC-04` + `SEC-02`, Amplify `customHeaders` com `CSP-Report-Only`, DynamoDB `DeletionProtectionEnabled=True` sem PITR, API Gateway throttling 20/40 + Access Logs mínimos com retenção de 14 dias e retenção de 14 dias na Lambda). Cognito, IAM, DNS e recursos de avaliações anteriores mantidos inalterados. Detalhes e rollbacks em [docs/AUDITORIA_SEGURANCA.md](AUDITORIA_SEGURANCA.md).
+
+| Etapa | Alteração Aplicada na AWS | Validação Executada | Resultado |
+|---|---|---|---|
+| **Etapa 1 — Lambda `acadflow-api`** | Deploy `Version=1` (`CodeSha256: dlDX0MabbcRVYZ8R09KhN33AriYg3KLoHB4XIssi5AM=`) com allowlist ProseMirror/Tiptap (`SEC-04`) e 4 cabeçalhos de segurança (`SEC-02`) | Compatibilidade 2/2 páginas existentes + `/health` com 4 headers + 19 asserções reais Lambda/DynamoDB + `verify_prod_domains.py` (`18/18`) | **PASS** |
+| **Etapa 2 — Amplify `acadflow-web`** | Ativado `customHeaders` ([infra/amplify_security_headers.yml](../infra/amplify_security_headers.yml)) com HSTS, `nosniff`, `DENY`, `Referrer-Policy`, `Permissions-Policy` e **`Content-Security-Policy-Report-Only`** | Inspeção ao vivo em `/`, `/login`, JS e CSS (6 headers presentes, CSP bloqueante `null`) + `verify_prod_domains.py` (`18/18`) | **PASS** *(validação visual CSP no navegador pendente)* |
+| **Etapa 3 — DynamoDB** | `DeletionProtectionEnabled=True` em `acadflow-tasks` e `acadflow-pages` (`PITR: DISABLED`) | `describe_table` + CRUD real de registros individuais em ambas as tabelas via Lambda | **PASS** |
+| **Etapa 4 — API Gateway + CloudWatch** | Throttling (`20 req/s`, burst `40`), retenção 14 dias em `/aws/lambda/acadflow-api`, criação de `/aws/apigateway/acadflow-http-api` (14 dias) e Access Logs JSON mínimos (6 metadados, zero PII/tokens) | `verify_prod_domains.py` (`18/18`, zero `429`) + inspeção de evento real no CloudWatch (`sensitiveDataDetected=false`, `unexpectedKeys=[]`) | **PASS** |
+
+### 23/11/2026 — Publicação Controlada Frontend (`jobId=3`) e Auditoria de Segurança
+> **Escopo:** Publicação autorizada do frontend estabilizado (commit `3d704d9`, bundle `/assets/index-BLG3afUM.js`) no AWS Amplify existente (`acadflow-web` / `dysbk8tmbj14k`, branch `main`), verificação pós-deploy somente leitura nos domínios institucionais e auditoria técnica completa registrada em [docs/AUDITORIA_SEGURANCA.md](AUDITORIA_SEGURANCA.md). Nenhum recurso de DNS, IAM, Cognito, DynamoDB, Lambda ou API Gateway foi modificado.
+
+| Item | Evidência / Detalhe | Resultado |
+|---|---|---|
+| **Versão anterior (baseline de rollback)** | Amplify `dysbk8tmbj14k`, branch `main`, **`jobId=2`** (`SUCCEED`, 22/11/2026 18:48-03:00), bundle `/assets/index-VM4fkVPj.js` (commit `12a4fc1`) | Backup dos 3 artefatos salvo antes do deploy |
+| **Versão implantada** | Amplify `dysbk8tmbj14k`, branch `main`, **`jobId=3`** (`SUCCEED`, 23/11/2026 10:31:36-03:00), bundle `/assets/index-BLG3afUM.js` (`783.782` bytes), commit `3d704d9` | **DEPLOY SUCCEED** |
+| **Verificação pós-deploy (`verify_prod_domains.py`)** | TLSv1.3 em ambos os domínios; 5 rotas SPA `200 OK`; bundle ao vivo `/assets/index-BLG3afUM.js` apontando exclusivamente para `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br`; `/health` `200`; `/tasks` e `/pages` `401` (sem token e inválido); CORS `204` (`https://evil.example` bloqueada); Cognito Hosted UI `200`; HTTP->HTTPS `301` | **18/18 PASS** |
+| **Procedimento de Rollback (se necessário)** | Recompilar commit `12a4fc1` (`git worktree` + `npm run build` com `.env.local` oficial) ou reenviar o ZIP de backup da `jobId=2` via `amplify:CreateDeployment` + `PUT` + `StartDeployment` em `dysbk8tmbj14k` (`main`) e reexecutar `verify_prod_domains.py` | **Documentado e pronto** |
+| **Auditoria de Segurança & Privacidade** | OWASP Top 10, OWASP API Top 10, AWS (Cognito, API Gateway, Lambda, LabRole, DynamoDB, CloudWatch, Amplify) e LGPD | Concluída em [docs/AUDITORIA_SEGURANCA.md](AUDITORIA_SEGURANCA.md) (0 críticas, 1 alta estrutural LabRole, 5 médias, 3 baixas) |
+
 ### 23/11/2026 — Estabilização, Segurança e Validação no Fedora Linux (Python 3.12.14 + Node v26.12.1)
 > **Escopo:** Testes automatizados locais + auditoria de segurança + verificação somente leitura dos domínios institucionais em produção. Nenhum recurso AWS foi modificado e nenhuma implantação foi executada.
 
@@ -65,9 +86,9 @@
 
 ---
 
-## 3. Estabilizações Locais Preparadas (23/11/2026)
+## 3. Estabilizações Publicadas no Frontend (`jobId=3` — 23/11/2026)
 
-> **Importante:** As correções locais abaixo já estão validadas por testes e build no Fedora, mas **ainda não foram implantadas no AWS Amplify** (nenhum deploy foi executado sem autorização). Caso deseje publicá-las antes da apresentação de 27/11, será necessário renovar o Learner Lab e autorizar um novo deploy do frontend.
+> **Status:** Publicadas com sucesso no AWS Amplify (`dysbk8tmbj14k`, branch `main`, **`jobId=3`**, bundle `/assets/index-BLG3afUM.js`) em 23/11/2026 às 10:31-03:00, após autorização explícita. Os testes manuais autenticados no navegador (login, cadastro, CRUD, auto-save, conflito `409`, `F5` e logout) permanecem pendentes de execução com as contas reais do usuário.
 
 1. **Dependências (`apps/web/package.json`):** `vitest` atualizado de `^3.1.2` para `^4.1.12` (`npm audit` zerado; compatível com `vite@6` e Node 20+).
 2. **Estabilidade do auto-save (`PageEditorPage.tsx` + `utils/autosaveState.ts`):** bloqueio de `PATCH` concorrente (evita `409` auto-infligido ao clicar **Salvar** durante debounce), preservação de edições digitadas durante salvamento em voo, proteção contra troca rápida de página e alerta `beforeunload` com alterações não salvas.
