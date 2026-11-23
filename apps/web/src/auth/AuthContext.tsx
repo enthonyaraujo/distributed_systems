@@ -142,19 +142,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user.profile?.sub ?? "Usuário autenticado";
   }, [user]);
 
-  const value: AuthContextValue = {
-    env,
-    isConfigured: configured,
-    isLoading,
-    isAuthenticated,
-    userLabel,
-    accessToken: isAuthenticated ? (user?.access_token ?? null) : null,
-    authError,
-    signIn,
-    completeCallback,
-    signOut,
-    handleSessionExpired,
-  };
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      env,
+      isConfigured: configured,
+      isLoading,
+      isAuthenticated,
+      userLabel,
+      accessToken: isAuthenticated ? (user?.access_token ?? null) : null,
+      authError,
+      signIn,
+      completeCallback,
+      signOut,
+      handleSessionExpired,
+    }),
+    [
+      env,
+      configured,
+      isLoading,
+      isAuthenticated,
+      userLabel,
+      user,
+      authError,
+      signIn,
+      completeCallback,
+      signOut,
+      handleSessionExpired,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

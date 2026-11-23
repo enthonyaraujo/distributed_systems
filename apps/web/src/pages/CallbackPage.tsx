@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AcadFlowMark } from "../components/Icons";
+import { AlertBanner } from "../components/ui/AlertBanner";
 
 export function CallbackPage() {
   const { completeCallback } = useAuth();
@@ -26,19 +28,21 @@ export function CallbackPage() {
 
   return (
     <main className="center-shell">
-      <section className="card">
+      <section className="card status-card">
+        <AcadFlowMark size={44} />
         {error ? (
           <>
             <h2>Falha no login</h2>
-            <p className="alert alert-error" role="alert">
-              {error}
-            </p>
-            <Link to="/login" className="btn btn-primary">
+            <AlertBanner>{error}</AlertBanner>
+            <Link to="/login" className="btn btn-primary btn-full">
               Voltar para o login
             </Link>
           </>
         ) : (
-          <p className="muted">Concluindo login seguro (PKCE)...</p>
+          <div className="status-card-row" aria-busy="true">
+            <span className="spinner" aria-hidden="true" />
+            <span>Concluindo login seguro…</span>
+          </div>
         )}
       </section>
     </main>

@@ -2,13 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageConflictError } from "../api/pagesApi";
 import { ApiClientError, AuthSessionExpiredError } from "../api/tasksApi";
+import {
+  IconAlert,
+  IconCalendar,
+  IconChevronRight,
+  IconRefresh,
+  IconSave,
+  IconTrash,
+} from "../components/Icons";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { AlertBanner } from "../components/ui/AlertBanner";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { EmptyState } from "../components/ui/EmptyState";
+import { SkeletonBlock } from "../components/ui/Skeleton";
+import { useToast } from "../components/ui/ToastContext";
 import { useWorkspace } from "../context/WorkspaceContext";
 import type { Page, ProseMirrorDoc } from "../types/page";
 import {
   canStartAutosave,
   resolvePostSaveState,
 } from "../utils/autosaveState";
+import { formatShortDate } from "../utils/formatters";
 import {
   validatePageContentSize,
   validatePageIcon,
@@ -23,6 +37,7 @@ export function PageEditorPage() {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
   const { pagesApi, upsertPageSummary, removePageSummary } = useWorkspace();
+  const { showToast } = useToast();
 
   const [page, setPage] = useState<Page | null>(null);
   const [title, setTitle] = useState("");
@@ -35,7 +50,9 @@ export function PageEditorPage() {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
+  const titleAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const versionRef = useRef<number>(1);
   const dirtyRef = useRef<boolean>(false);
   const savingRef = useRef<boolean>(false);
@@ -51,6 +68,14 @@ export function PageEditorPage() {
   useEffect(() => {
     activePageIdRef.current = pageId;
   }, [pageId]);
+
+  // Auto-resize multiline title textarea cleanly on all viewports (HIGH-03)
+  useEffect(() => {
+    const el = titleAreaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [title, loading]);
 
   const loadPage = useCallback(async () => {
     if (!pageId) return;
@@ -110,69 +135,75 @@ export function PageEditorPage() {
     void loadPage();
   }, [loadPage]);
 
-  const persistDraft = useCallback(async () => {
-    if (!pageId || !canStartAutosave(savingRef.current, dirtyRef.current)) {
-      return;
-    }
-    const draft = latestDraftRef.current;
-    if (!draft.content) return;
+  const persistDraft = useCallback(
+    async (explicit = false) => {
+      if (!pageId || !canStartAutosave(savingRef.current, dirtyRef.current)) {
+        return;
+      }
+      const draft = latestDraftRef.current;
+      if (!draft.content) return;
 
-    const titleErr = validatePageTitle(draft.title);
-    const iconErr = validatePageIcon(draft.icon);
-    const sizeErr = validatePageContentSize(draft.content);
-    const validationErr = titleErr ?? iconErr ?? sizeErr;
-    if (validationErr) {
-      setSaveState("error");
-      setSaveError(validationErr);
-      return;
-    }
+      const titleErr = validatePageTitle(draft.title);
+      const iconErr = validatePageIcon(draft.icon);
+      const sizeErr = validatePageContentSize(draft.content);
+      const validationErr = titleErr ?? iconErr ?? sizeErr;
+      if (validationErr) {
+        setSaveState("error");
+        setSaveError(validationErr);
+        return;
+      }
 
-    const targetPageId = pageId;
-    const seqAtSaveStart = editSeqRef.current;
-    savingRef.current = true;
-    setSaveState("saving");
-    setSaveError(null);
-    try {
-      const updated = await pagesApi.updatePage(targetPageId, {
-        title: draft.title.trim(),
-        icon: draft.icon.trim() || "📄",
-        content: draft.content,
-        expectedVersion: versionRef.current,
-      });
-      upsertPageSummary(updated);
-      if (activePageIdRef.current !== targetPageId) {
-        return;
+      const targetPageId = pageId;
+      const seqAtSaveStart = editSeqRef.current;
+      savingRef.current = true;
+      setSaveState("saving");
+      setSaveError(null);
+      try {
+        const updated = await pagesApi.updatePage(targetPageId, {
+          title: draft.title.trim(),
+          icon: draft.icon.trim() || "📄",
+          content: draft.content,
+          expectedVersion: versionRef.current,
+        });
+        upsertPageSummary(updated);
+        if (activePageIdRef.current !== targetPageId) {
+          return;
+        }
+        versionRef.current = updated.version;
+        setPage(updated);
+        const transition = resolvePostSaveState(
+          seqAtSaveStart,
+          editSeqRef.current
+        );
+        dirtyRef.current = transition.stillDirty;
+        setSaveState(transition.nextSaveState);
+        if (explicit && !transition.stillDirty) {
+          showToast(`Página salva (v${updated.version}).`);
+        }
+      } catch (err) {
+        if (activePageIdRef.current !== targetPageId) {
+          return;
+        }
+        if (err instanceof AuthSessionExpiredError) return;
+        if (err instanceof PageConflictError) {
+          setSaveState("conflict");
+          setSaveError(err.message);
+          return;
+        }
+        setSaveState("error");
+        setSaveError(
+          err instanceof ApiClientError
+            ? err.message
+            : "Falha ao salvar a página."
+        );
+      } finally {
+        if (activePageIdRef.current === targetPageId) {
+          savingRef.current = false;
+        }
       }
-      versionRef.current = updated.version;
-      setPage(updated);
-      const transition = resolvePostSaveState(
-        seqAtSaveStart,
-        editSeqRef.current
-      );
-      dirtyRef.current = transition.stillDirty;
-      setSaveState(transition.nextSaveState);
-    } catch (err) {
-      if (activePageIdRef.current !== targetPageId) {
-        return;
-      }
-      if (err instanceof AuthSessionExpiredError) return;
-      if (err instanceof PageConflictError) {
-        setSaveState("conflict");
-        setSaveError(err.message);
-        return;
-      }
-      setSaveState("error");
-      setSaveError(
-        err instanceof ApiClientError
-          ? err.message
-          : "Falha ao salvar a página."
-      );
-    } finally {
-      if (activePageIdRef.current === targetPageId) {
-        savingRef.current = false;
-      }
-    }
-  }, [pageId, pagesApi, upsertPageSummary]);
+    },
+    [pageId, pagesApi, upsertPageSummary, showToast]
+  );
 
   // Warn before accidental tab reload/close while edits have not been persisted yet
   useEffect(() => {
@@ -185,11 +216,25 @@ export function PageEditorPage() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
+  // Keyboard shortcut Ctrl+S / Cmd+S for immediate save (REF-05)
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (saveState !== "conflict" && saveState !== "saving") {
+          void persistDraft(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [persistDraft, saveState]);
+
   // Debounced auto-save (1.5s after idle edit)
   useEffect(() => {
     if (saveState !== "dirty") return;
     const timer = window.setTimeout(() => {
-      void persistDraft();
+      void persistDraft(false);
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [saveState, title, icon, content, persistDraft]);
@@ -210,18 +255,18 @@ export function PageEditorPage() {
     setSaveError(null);
   }
 
-  async function handleDelete() {
+  async function confirmDeletePage() {
     if (!page) return;
-    if (!window.confirm(`Excluir permanentemente a página "${page.title}"?`)) {
-      return;
-    }
     setDeleting(true);
     try {
       await pagesApi.deletePage(page.id);
       removePageSummary(page.id);
+      setConfirmDeleteOpen(false);
+      showToast("Página excluída.");
       navigate("/pages", { replace: true });
     } catch (err) {
       if (err instanceof AuthSessionExpiredError) return;
+      setConfirmDeleteOpen(false);
       setSaveError(
         err instanceof ApiClientError
           ? err.message
@@ -234,43 +279,56 @@ export function PageEditorPage() {
 
   if (loading) {
     return (
-      <section className="card" aria-busy="true">
-        <p className="muted">Carregando página...</p>
-      </section>
+      <div className="editor-page" aria-busy="true" aria-label="Carregando página…">
+        <div className="editor-topbar">
+          <SkeletonBlock width="220px" height="22px" />
+          <SkeletonBlock width="180px" height="32px" />
+        </div>
+        <article className="card document-paper skeleton-stack">
+          <SkeletonBlock width="280px" height="38px" radius="12px" />
+          <SkeletonBlock width="70%" height="34px" />
+          <SkeletonBlock width="100%" height="44px" radius="12px" />
+          <SkeletonBlock width="90%" height="18px" />
+          <SkeletonBlock width="84%" height="18px" />
+          <SkeletonBlock width="62%" height="18px" />
+        </article>
+      </div>
     );
   }
 
   if (loadError || !page || !content) {
     return (
-      <section className="card empty-state">
-        <h2>{loadError ?? "Página indisponível"}</h2>
-        <div className="header-actions" style={{ justifyContent: "center" }}>
+      <EmptyState
+        icon={<IconAlert size={24} />}
+        title={loadError ?? "Página indisponível"}
+        description="Não foi possível abrir esta página. Ela pode ter sido removida ou estar temporariamente inacessível."
+        action={
           <Link to="/pages" className="btn btn-primary">
             Voltar para páginas
           </Link>
-        </div>
-      </section>
+        }
+      />
     );
   }
 
   const statusLabel: Record<SaveState, string> = {
     saved: `Salvo (v${page.version})`,
     dirty: "Alterações não salvas",
-    saving: "Salvando...",
+    saving: "Salvando…",
     error: "Erro ao salvar",
-    conflict: "Conflito de versão",
+    conflict: "Conflito 409",
   };
 
   return (
     <div className="editor-page">
       <div className="editor-topbar">
-        <div className="editor-breadcrumb">
+        <nav className="editor-breadcrumb" aria-label="Navegação da página">
           <Link to="/pages" className="text-link">
             Páginas
           </Link>
-          <span className="muted">/</span>
-          <span className="muted truncate">{title || "Sem título"}</span>
-        </div>
+          <IconChevronRight size={14} className="muted" />
+          <span className="breadcrumb-current">{title || "Sem título"}</span>
+        </nav>
 
         <div className="editor-actions">
           <span className={`save-pill save-${saveState}`} role="status">
@@ -280,83 +338,94 @@ export function PageEditorPage() {
             type="button"
             className="btn btn-primary btn-sm"
             disabled={saveState === "saving" || saveState === "conflict"}
-            onClick={() => void persistDraft()}
+            title="Salvar alterações (Ctrl+S)"
+            onClick={() => void persistDraft(true)}
           >
-            Salvar
+            <IconSave size={14} />
+            <span>Salvar</span>
           </button>
           <button
             type="button"
             className="btn btn-danger btn-sm"
             disabled={deleting}
-            onClick={() => void handleDelete()}
+            onClick={() => setConfirmDeleteOpen(true)}
           >
-            Excluir
+            <IconTrash size={14} />
+            <span>Excluir</span>
           </button>
         </div>
       </div>
 
       {saveState === "conflict" && (
-        <div className="alert alert-warning error-row" role="alert">
-          <span>
-            <strong>Conflito de salvamento (409):</strong>{" "}
-            {saveError ??
-              "Esta página foi alterada em outra sessão. Recarregue para evitar perda de dados."}
-          </span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void loadPage()}
-          >
-            Recarregar página
-          </button>
-        </div>
+        <AlertBanner
+          tone="warning"
+          actionLabel="Recarregar página"
+          actionIcon={<IconRefresh size={14} />}
+          onAction={() => void loadPage()}
+        >
+          <strong>Conflito de salvamento (HTTP 409):</strong>{" "}
+          {saveError ??
+            "Esta página foi alterada em outra sessão. A edição foi bloqueada para evitar sobrescrita; recarregue a versão mais recente."}
+        </AlertBanner>
       )}
 
       {saveState === "error" && saveError && (
-        <div className="alert alert-error error-row" role="alert">
-          <span>{saveError}</span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void persistDraft()}
-          >
-            Tentar salvar novamente
-          </button>
-        </div>
+        <AlertBanner
+          actionLabel="Tentar salvar novamente"
+          onAction={() => void persistDraft(true)}
+        >
+          {saveError}
+        </AlertBanner>
       )}
 
       <article className="card document-paper">
-        <div className="icon-picker" role="group" aria-label="Ícone da página">
-          {ICON_PRESETS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              className={`icon-choice ${icon === preset ? "is-selected" : ""}`}
-              disabled={saveState === "conflict"}
-              onClick={() => {
-                setIcon(preset);
-                markDirty({ icon: preset });
-              }}
-              title={`Usar ícone ${preset}`}
-            >
-              {preset}
-            </button>
-          ))}
+        <div className="document-meta-bar">
+          <div className="icon-picker" role="group" aria-label="Ícone da página">
+            {ICON_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`icon-choice ${icon === preset ? "is-selected" : ""}`}
+                aria-pressed={icon === preset}
+                disabled={saveState === "conflict"}
+                onClick={() => {
+                  setIcon(preset);
+                  markDirty({ icon: preset });
+                }}
+                title={`Usar ícone ${preset}`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          <span className="meta-chip">
+            <IconCalendar size={13} />
+            <span>Atualizada em {formatShortDate(page.updatedAt)}</span>
+          </span>
         </div>
 
         <label className="sr-only" htmlFor="page-title-input">
           Título da página
         </label>
-        <input
+        <textarea
+          ref={titleAreaRef}
           id="page-title-input"
-          type="text"
+          name="pageTitle"
+          rows={1}
+          autoComplete="off"
           className="document-title-input"
           value={title}
           maxLength={120}
           disabled={saveState === "conflict"}
-          placeholder="Título da página..."
+          placeholder="Título da página…"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+            }
+          }}
           onChange={(e) => {
-            const next = e.target.value;
+            const next = e.target.value.replace(/\r?\n/g, " ");
             setTitle(next);
             markDirty({ title: next });
           }}
@@ -372,6 +441,16 @@ export function PageEditorPage() {
           }}
         />
       </article>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Excluir página"
+        description={`Tem certeza de que deseja excluir permanentemente "${page.title}"?`}
+        confirmLabel="Excluir página"
+        busy={deleting}
+        onConfirm={() => void confirmDeletePage()}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </div>
   );
 }

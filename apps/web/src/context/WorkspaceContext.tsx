@@ -141,22 +141,39 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [pagesApi, upsertPageSummary]
   );
 
-  const value: WorkspaceContextValue = {
-    tasksApi,
-    pagesApi,
-    tasks,
-    pages,
-    loadingTasks,
-    loadingPages,
-    tasksError,
-    pagesError,
-    refreshTasks,
-    refreshPages,
-    setTasks,
-    createQuickPage,
-    upsertPageSummary,
-    removePageSummary,
-  };
+  const value = useMemo<WorkspaceContextValue>(
+    () => ({
+      tasksApi,
+      pagesApi,
+      tasks,
+      pages,
+      loadingTasks,
+      loadingPages,
+      tasksError,
+      pagesError,
+      refreshTasks,
+      refreshPages,
+      setTasks,
+      createQuickPage,
+      upsertPageSummary,
+      removePageSummary,
+    }),
+    [
+      tasksApi,
+      pagesApi,
+      tasks,
+      pages,
+      loadingTasks,
+      loadingPages,
+      tasksError,
+      pagesError,
+      refreshTasks,
+      refreshPages,
+      createQuickPage,
+      upsertPageSummary,
+      removePageSummary,
+    ]
+  );
 
   return (
     <WorkspaceContext.Provider value={value}>
