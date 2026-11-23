@@ -1,0 +1,79 @@
+# ==============================================================================
+# AcadFlow — .gitignore (Windows + Fedora Linux)
+# ==============================================================================
+
+# --- Node.js & Frontend (React + TypeScript + Vite + Tiptap) ---
+node_modules/
+apps/web/node_modules/
+dist/
+apps/web/dist/
+build/
+.vite/
+coverage/
+apps/web/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# --- Python (Backend Lambda + Infra scripts + Pytest) ---
+.venv/
+venv/
+env/
+services/api/.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Credentials, Secrets & Local Environment Files ---
+# Explicitly ignore all real .env files while preserving safe *.env.example files
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+credentials.*
+aws_credentials*
+*.secret
+*.secret.*
+secrets.json
+tokens.json
+infra/deploy_state.json
+
+# --- Infrastructure Artifacts, Deployment Packages & Logs ---
+*.zip
+*.tar.gz
+services/api/dist/
+apps/web/acadflow-web-dist.zip
+tmp/
+temp/
+*.tmp
+*.log
+logs/
+.aws-sam/
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# --- Operating System & Editors (Windows + Fedora Linux) ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+*.iml

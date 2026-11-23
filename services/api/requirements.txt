@@ -1,0 +1,4 @@
+# Runtime dependencies for AWS Lambda Python 3.12.
+# boto3 / botocore are provided natively by the AWS Lambda Python runtime.
+# Keep this file dependency-free unless pure-Python packages are explicitly added
+# and validated on Python 3.12.
