@@ -12,7 +12,7 @@
 | ID | Área | Severidade | Estado em 23/11/2026 |
 |---|---|---|---|
 | **SEC-04** | Allowlist estrita do JSON ProseMirror/Tiptap no backend (nós, marcas, atributos e URLs seguras) | Média | **Implantado na Lambda `acadflow-api` (v1) e validado em produção** |
-| **SEC-02** | Cabeçalhos HTTP de segurança na API + `customHeaders` no Amplify com CSP em `Report-Only` | Média | **Implantado na API e no Amplify (`Report-Only` ativo; sem CSP bloqueante ainda)** |
+| **SEC-02** | Cabeçalhos HTTP de segurança na API + `customHeaders` no Amplify com CSP em `Report-Only` | Média | **Implantado na API e no Amplify; zero violações observadas no Firefox (`V-08`); CSP mantida em `Report-Only`** |
 | **SEC-03** | Throttling no stage `$default` do API Gateway (`20 req/s`, `burst 40`) | Média | **Implantado na AWS e validado** (zero `429`) |
 | **SEC-06a** | Retenção de 14 dias em `/aws/lambda/acadflow-api` | Média | **Implantado na AWS e validado** (zero perda de logs existentes) |
 | **SEC-06b** | Access Logs JSON mínimos do API Gateway (`/aws/apigateway/acadflow-http-api`, 14 dias) | Média | **Implantado na AWS e validado** (eventos reais confirmados sem PII/tokens) |
@@ -31,12 +31,10 @@
   - JWT Authorizer no API Gateway HTTP API em todas as 10 rotas `/tasks*` e `/pages*` (`GET /health` única rota pública).
   - Defesa em profundidade na Lambda exigindo `sub` não vazio, `token_use == "access"` e `exp` vigente.
   - Chaves compostas `(ownerId=sub, id)` em `acadflow-tasks` e `acadflow-pages`, uso exclusivo de `Query` (zero `Scan`), `ConditionExpression`, rejeição de `ownerId` no payload (`400`) e retorno uniforme `404` para recursos inexistentes ou de terceiros.
-- **Evidências obtidas:**
-  - Fronteira HTTP em produção: **13/13 `401`** (10 rotas anônimas + 3 tokens inválidos/forjados).
-  - Lambda `python3.12` + DynamoDB reais (sondas efêmeras isoladas): **19/19 PASS** (CRUD, `409`, `400` para payloads inseguros, `404` cruzado).
-  - Suíte local Python `3.12.14`: **60/60 Pytest PASS** + **26/26 Smoke HTTP PASS**.
-- **Pendência prioritária (não substituída por simulações):**
-  - O User Pool Cognito possui atualmente **1 conta `CONFIRMED` e 1 conta `UNCONFIRMED`**. A confirmação da 2ª conta real pelo usuário e a execução do teste autenticado com dois JWTs reais (`tests/e2e/smoke_api.py` com `ACADFLOW_TOKEN_A`, `ACADFLOW_TOKEN_B` e `ACADFLOW_ID_TOKEN_A`) continuam obrigatórias para encerrar `AC-04`, `AC-09` e `AC-P1-02`.
+- **Evidências reais concluídas em 23/11/2026:**
+  - **Produção com 2 contas reais Cognito (`tests/e2e/smoke_api.py` — 33/33 PASS):** comprovadas rejeição de chamadas sem token/inválido/expirado (`401`), **rejeição de ID token real (`403`)** no API Gateway, rejeição de `ownerId` no payload (`400`), CRUD autenticado `/tasks` e `/pages`, conflito otimista (`409`), invisibilidade de registros alheios em listagens, **`404` em `GET`/`PATCH`/`DELETE` cruzados** (`Usuário B` -> `Usuário A`), preservação da integridade dos dados do `Usuário A` e limpeza dos registros temporários.
+  - **Validação visual no navegador Firefox (`V-01` a `V-08` — aprovadas pelo usuário):** confirmados login PKCE, CRUD + `F5`, conflito `409` em 2 abas, logout com bloqueio de rotas protegidas e ausência de problemas com `CSP Report-Only` ou erros de autenticação/autorização no DevTools.
+  - **Suítes automatizadas locais:** **60/60 Pytest PASS** (Python `3.12.14`), **16/16 Vitest PASS**, `npm audit` com **0 vulnerabilities** e **33/33 Smoke HTTP local PASS**.
 
 ---
 
@@ -48,7 +46,7 @@
 - **Depois:** versão publicada **`1`** (`CodeSha256: dlDX0MabbcRVYZ8R09KhN33AriYg3KLoHB4XIssi5AM=`, `13.953` bytes, `LastUpdateStatus: Successful`):
   - Allowlist ProseMirror/Tiptap server-side (`doc`, `paragraph`, `heading` `1..3`, `bulletList`, `orderedList`, `listItem`, `taskList`, `taskItem`, `blockquote`, `codeBlock`, `text`, `hardBreak`, `horizontalRule`; marcas `bold`, `italic`, `strike`, `code`, `underline`, `link` restrita a `http`/`https`/`mailto`; limites de 20 níveis, 2.000 nós e 100 KB).
   - Cabeçalhos HTTP em todas as respostas JSON: `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
-- **Validação pós-deploy:** `GET /health` retornando `200` com todos os 4 cabeçalhos + **19/19** asserções reais na Lambda/DynamoDB + **18/18** em `verify_prod_domains.py`.
+- **Validação pós-deploy:** `GET /health` retornando `200` com todos os 4 cabeçalhos + **19/19** asserções reais na Lambda/DynamoDB + **33/33** em `smoke_api.py` (2 contas reais) + **18/18** em `verify_prod_domains.py`.
 - **Rollback:** reenviar o ZIP anterior via `lambda:UpdateFunctionCode(FunctionName="acadflow-api", ZipFile=...)`.
 
 ### 3.2. Etapa 2 — Cabeçalhos de Segurança no AWS Amplify (`SEC-02`)
@@ -60,8 +58,7 @@
   - `Referrer-Policy: strict-origin-when-cross-origin`
   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
   - `Content-Security-Policy-Report-Only` (estritamente não bloqueante, sem endpoint externo `report-uri`/`report-to`, calibrada para React/Vite, Tiptap, API institucional e Cognito).
-- **Validação pós-alteração:** confirmados todos os 6 cabeçalhos ao vivo em `/`, `/login`, bundle JS e CSS (`Content-Security-Policy` bloqueante permanece `null`) + `verify_prod_domains.py` **18/18 PASS**.
-- **Validação complementar pendente no navegador:** inspecionar o console do DevTools durante login Cognito, uso do editor Tiptap e viewport mobile (`375x812`) para confirmar zero avisos de CSP antes de qualquer futura promoção para modo bloqueante.
+- **Validação pós-alteração:** confirmados os 6 cabeçalhos ao vivo em `/`, `/login`, bundle JS e CSS (`Content-Security-Policy` bloqueante permanece `null`), `verify_prod_domains.py` **18/18 PASS** e validação visual `V-08` no Firefox sem problemas observados de CSP.
 - **Rollback:** `amplify:UpdateApp(appId="<AMPLIFY_APP_ID>", customHeaders="")`.
 
 ### 3.3. Etapa 3 — Proteção do DynamoDB (`SEC-08`)
@@ -71,7 +68,7 @@
   - **`DeletionProtectionEnabled` (custo zero):** impede exclusivamente exclusão acidental da tabela inteira (`DeleteTable`).
   - **Exclusão de registros individuais (`DeleteItem`):** controlada por autorização por proprietário (`ownerId=sub`), confirmação na interface e concorrência otimista (`version`).
   - **Backup e recuperação (PITR / backups sob demanda):** únicos mecanismos que recuperam dados apagados ou corrompidos, porém envolvem cobrança adicional — mantidos desligados no Learner Lab.
-- **Validação pós-alteração:** CRUD real de registros individuais em ambas as tabelas aprovado sem regressão.
+- **Validação pós-alteração:** CRUD real de registros individuais em ambas as tabelas aprovado via Lambda e via `smoke_api.py` (33/33 PASS).
 - **Rollback:** `dynamodb:UpdateTable(TableName="<tabela>", DeletionProtectionEnabled=False)`.
 
 ### 3.4. Etapa 4 — Throttling (`SEC-03`) e Logs Mínimos com Privacidade (`SEC-06`)
@@ -102,8 +99,7 @@
   - Tokens apenas em `sessionStorage`, zero cookies/analytics de terceiros, `Cache-Control: no-store` ativo na API, logs da Lambda e Access Logs do API Gateway com retenção finita de 14 dias e sem PII/tokens.
 - **Riscos residuais conhecidos:**
   1. `LabRole` compartilhada na Lambda (`SEC-01`, restrição do AWS Academy Learner Lab).
-  2. Teste HTTP com 2 contas reais Cognito ainda pendente da confirmação da 2ª conta (`AC-04`, `AC-09`, `AC-P1-02`).
-  3. CSP ainda em modo `Report-Only` até validação em navegador autenticado (`SEC-02`).
-  4. Origens/callbacks de desenvolvimento mantidos para suporte ao ambiente local Fedora (`SEC-05`) e auto-cadastro/MFA preservados para a demonstração (`SEC-07`).
-  5. *Access tokens* JWT stateless permanecem válidos até expiração (30 min) após logout; aviso conciso de privacidade na tela de login e exclusão automatizada completa de conta permanecem no backlog (`SEC-09`).
-  6. Validação de formato UUID em `{id}` e timeout explícito `fetch` no frontend no backlog (`SEC-10`, `SEC-11`).
+  2. CSP mantida em `Report-Only` (não bloqueante) para evitar risco de regressão antes da apresentação (`SEC-02`); pode ser promovida após ciclo adicional de validação multi-navegador.
+  3. Origens/callbacks de desenvolvimento mantidos para suporte ao ambiente local (`SEC-05`) e auto-cadastro/MFA preservados para a demonstração (`SEC-07`).
+  4. *Access tokens* JWT stateless permanecem válidos até expiração (30 min) após logout; aviso conciso de privacidade na tela de login e exclusão automatizada completa de conta permanecem no backlog (`SEC-09`).
+  5. Validação de formato UUID em `{id}` e timeout explícito `fetch` no frontend no backlog (`SEC-10`, `SEC-11`).
