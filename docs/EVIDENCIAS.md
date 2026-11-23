@@ -1,87 +1,138 @@
 # Evidências e Matriz Central de Critérios de Aceitação — AcadFlow
 
-> **Regra de integridade:** Nenhum critério que exige AWS, Cognito real, DynamoDB real ou DNS institucional pode ser marcado como `aceito` com base em testes locais ou mocks. Registre apenas evidências reais, sanitizadas e sem tokens, senhas ou chaves.
+> **Regra de integridade:** Nenhum critério que exige Cognito real, dois usuários reais, DynamoDB em fluxo ponta a ponta no navegador ou verificação manual em produção pode ser marcado como `Aceito` com base apenas em testes locais ou mocks. Registre sempre a diferença entre **testes automatizados** (locais e produção) e **validações manuais pendentes**, sem tokens, senhas ou chaves.
 
 ---
 
 ## 1. Matriz Central Única de Critérios de Aceitação (`AC-01` a `AC-15`)
 
-| ID | Requisito Oficial | Cenário / Teste Reproduzível | Evidência Exigida | Ambiente Exigido | Estado | Data | Responsável |
-|---|---|---|---|---|---|---|---|
-| **AC-01** | DNS da Aplicação (Req. 3) | Acessar `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` | Captura com barra de endereço institucional, HTTPS válido e aplicação carregada | Produção (DNS institucional) | **Aceito (22/11)** | 22/11/2026 | Infra / QA |
-| **AC-02** | DNS da API (Req. 2, 3) | `GET https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br/health` | Status `200 OK`, HTTPS válido e payload JSON de saúde | Produção (DNS institucional) | **Aceito (22/11)** | 22/11/2026 | Infra / QA |
-| **AC-03** | Autorização API (Req. 4) | `GET /tasks` sem header `Authorization` | Bloqueado (`401`) pelo API Gateway; output HTTP registrado | Produção (DNS institucional) | **Aceito (22/11)** | 22/11/2026 | Backend / QA |
-| **AC-04** | Autorização API (Req. 4) | `GET /tasks` com token inválido, expirado ou **ID token** | Rejeitado (`401`/`403`) no Gateway e/ou Lambda (`token_use != "access"`) | Produção (DNS institucional) | Parcial (inválido `401` verificado no DNS oficial; ID token verificado na Lambda real; testar ID token Cognito no Gateway com conta real) | 22/11/2026 | Auth / QA |
-| **AC-05** | Autenticação + API (Req. 2, 4) | Login Cognito (PKCE) + `GET /tasks` com `access_token` válido | Login funcional e resposta `200 OK` na rede real | Produção (DNS institucional) | Pendente | — | Frontend / Auth |
-| **AC-06** | 3 Camadas + CRUD (Req. 1, 2) | `POST /tasks` autenticado | `201 Created` e item persistido na tabela DynamoDB | Produção (AWS + DynamoDB) | Pendente (unitário local pronto) | — | Backend / QA |
-| **AC-07** | Persistência Real (Req. 1, 2) | `PATCH /tasks/{id}` e recarregar página (`F5`) | `200 OK` e estado mantido após recarga | Produção (AWS + DNS institucional) | Pendente | — | Frontend / QA |
-| **AC-08** | CRUD Completo (Req. 1, 2) | `DELETE /tasks/{id}` | `204 No Content` e item ausente após consulta/recarga | Produção (AWS + DynamoDB) | Pendente (unitário local pronto) | — | Backend / QA |
-| **AC-09** | Isolamento / Anti-IDOR (Req. 4) | Usuário B tenta `GET`/`PATCH`/`DELETE` em tarefa do Usuário A | `404` em todas as operações; item de A intacto | Produção (AWS + 2 usuários reais) | Pendente (unitário local pronto) | — | Backend / QA |
-| **AC-10** | Validação de Negócios (Req. 1, 2) | `POST /tasks` sem `title`, `status` inválido ou com `ownerId` no body | `400 VALIDATION_ERROR` com JSON padrão, sem persistir | Produção (AWS) | Pendente (unitário local pronto) | — | Backend / QA |
-| **AC-11** | UI Responsiva + SPA Rewrite (Req. 1) | Testar em mobile (`375x812`), recarregar rotas e `/auth/callback` | Sem overflow horizontal crítico e sem `404` SPA | Produção (DNS institucional) | Pendente | — | Frontend / QA |
-| **AC-12** | 3 Camadas + Apresentação (Req. 1, 5) | Explicar arquitetura publicada e ensaiar demo (5–8 min) | Diagrama real + checklist de apresentação concluído | Produção / Presencial | Pendente | — | Coordenador |
-| **AC-13** | Logout e Sessão (Req. 4) | Acionar Logout, validar limpeza local, redirecionamento `/logout` e comportamento de tokens | Rota protegida exige novo login; semântica de revogação documentada | Produção (DNS institucional) | Pendente | — | Frontend / Auth |
-| **AC-14** | Comunicação REST Real (Req. 2) | Inspecionar DevTools Network durante uso real | Chamadas HTTPS reais frontend -> API com CORS restrito | Produção (DNS institucional) | Pendente | — | Frontend / QA |
-| **AC-15** | Runtime Python 3.12 (Qualidade) | Executar pacote ZIP na AWS Lambda `python3.12` | Execução real validada sem erro de import/permissão e logs no CloudWatch | AWS Lambda (`python3.12`) | **Aceito (22/11)** | 22/11/2026 | Backend / Infra |
+| ID | Requisito Oficial (`docs/AVALIACAO.md`) | Cenário / Teste Reproduzível | Tipo de Validação | Ambiente Exigido | Estado | Data |
+|---|---|---|---|---|---|---|
+| **AC-01** | DNS da Aplicação (Req. 3) | Acessar `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` | Automatizado (`verify_prod_domains.py`) + Manual (navegador) | Produção (DNS institucional) | **Aceito** (verificado em 22/11 e revalidado em 23/11 — `TLSv1.3` até 08/06/2027) | 23/11/2026 |
+| **AC-02** | DNS da API (Req. 2, 3) | `GET https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br/health` | Automatizado (`verify_prod_domains.py`) | Produção (DNS institucional) | **Aceito** (`200 OK`, `TLSv1.3` até 03/06/2027, revalidado em 23/11) | 23/11/2026 |
+| **AC-03** | Autorização API (Req. 4) | `GET /tasks` e `GET /pages` sem header `Authorization` | Automatizado (`verify_prod_domains.py`) | Produção (DNS institucional) | **Aceito** (`401` pelo API Gateway em `/tasks` e `/pages`, revalidado em 23/11) | 23/11/2026 |
+| **AC-04** | Autorização API (Req. 4) | `GET /tasks` com token inválido, expirado ou **ID token** | Automatizado (inválido + Lambda real) + **Manual pendente (ID token real no Gateway)** | Produção (DNS institucional) | **Parcial** (inválido `401` verificado no DNS oficial; ID token `401` verificado na Lambda real; falta testar ID token Cognito real no DNS oficial via `ACADFLOW_ID_TOKEN_A`) | 23/11/2026 |
+| **AC-05** | Autenticação + API (Req. 2, 4) | Login Cognito (PKCE) + `GET /tasks` com `access_token` válido | **Manual (navegador + `smoke_api.py` com token real)** | Produção (DNS institucional) | **Pendente** (testado localmente em memória; validar no DNS oficial com `Usuário A`) | — |
+| **AC-06** | 3 Camadas + CRUD (Req. 1, 2) | `POST /tasks` autenticado | Automatizado (Lambda+DynamoDB real em 22/11) + **Manual pendente (fluxo HTTP/navegador no DNS oficial)** | Produção (AWS + DynamoDB) | **Pendente** (Lambda+DynamoDB validados via invoke; falta evidência via navegador/HTTP autenticado no DNS oficial) | — |
+| **AC-07** | Persistência Real (Req. 1, 2) | `PATCH /tasks/{id}` e recarregar página (`F5`) | **Manual (navegador)** | Produção (AWS + DNS institucional) | **Pendente** | — |
+| **AC-08** | CRUD Completo (Req. 1, 2) | `DELETE /tasks/{id}` e confirmar ausência após recarga | Automatizado (Lambda+DynamoDB real em 22/11) + **Manual pendente (fluxo HTTP/navegador)** | Produção (AWS + DynamoDB) | **Pendente** | — |
+| **AC-09** | Isolamento / Anti-IDOR (Req. 4) | `Usuário B` tenta `GET`/`PATCH`/`DELETE` em tarefa do `Usuário A` | Automatizado (Lambda+DynamoDB real em 22/11) + **Manual pendente (2 contas Cognito reais via HTTP)** | Produção (AWS + 2 usuários reais) | **Pendente** (executar roteiro da Seção 4 com `ACADFLOW_TOKEN_A` e `ACADFLOW_TOKEN_B`) | — |
+| **AC-10** | Validação de Negócios (Req. 1, 2) | `POST /tasks` sem `title`, `status` inválido ou com `ownerId` no body | Automatizado (unitário + Lambda real) + **Manual pendente via DNS oficial** | Produção (AWS) | **Pendente** (coberto por `smoke_api.py` na Seção 4) | — |
+| **AC-11** | UI Responsiva + SPA Rewrite (Req. 1) | Testar em mobile (`375x812`), recarregar rotas e `/auth/callback` | Automatizado (SPA `200 OK` em 5 rotas) + **Manual pendente (viewport mobile `375x812`)** | Produção (DNS institucional) | **Parcial** (SPA rewrite `200 OK` revalidado em 23/11; falta inspeção visual mobile `375x812`) | 23/11/2026 |
+| **AC-12** | 3 Camadas + Apresentação (Req. 1, 5) | Explicar arquitetura publicada e ensaiar demo (5–8 min) | **Manual (ensaio presencial)** | Produção / Presencial | **Pendente** (apresentação em 27/11/2026) | — |
+| **AC-13** | Logout e Sessão (Req. 4) | Acionar Logout, validar limpeza de `sessionStorage`, `/logout` Cognito e reexigência de login | **Manual (navegador)** | Produção (DNS institucional) | **Pendente** | — |
+| **AC-14** | Comunicação REST Real (Req. 2) | Inspecionar DevTools Network durante uso real | Automatizado (CORS `204` revalidado) + **Manual pendente (captura DevTools)** | Produção (DNS institucional) | **Parcial** (CORS institucional revalidado em 23/11; falta captura do DevTools autenticado) | 23/11/2026 |
+| **AC-15** | Runtime Python 3.12 (Qualidade) | Executar pacote ZIP na AWS Lambda `python3.12` + suíte local em Python 3.12 | Automatizado (Lambda real 22/11 + Fedora Python `3.12.14` 23/11) | AWS Lambda (`python3.12`) + Fedora | **Aceito** (Lambda real validada em 22/11 + 39 testes e empacotamento validados em Python `3.12.14` no Fedora em 23/11) | 23/11/2026 |
 
 ### Critérios Complementares P1 — Workspace Acadêmico (`/pages` + Tiptap)
 
-| ID | Escopo | Cenário / Teste Reproduzível | Evidência Exigida | Ambiente Exigido | Estado | Data | Responsável |
-|---|---|---|---|---|---|---|---|
-| **AC-P1-01** | P1 — CRUD Páginas | `POST/GET/PATCH/DELETE /pages` autenticado + recarga | Persistência real na tabela DynamoDB `acadflow-pages` | Produção (AWS + DynamoDB) | Pendente | — | Backend / QA |
-| **AC-P1-02** | P1 — Isolamento Páginas | Usuário B tenta `GET/PATCH/DELETE /pages/{id}` do Usuário A; ID token e `ownerId` no body rejeitados | `404` cruzado, `401` ID token, `400` `ownerId` no body | Produção (AWS + 2 usuários) | Pendente | — | Backend / QA |
-| **AC-P1-03** | P1 — Conflito de Salvamento | Enviar `PATCH /pages/{id}` com `expectedVersion` desatualizado | `409 CONFLICT` (`VERSION_CONFLICT`) sem sobrescrever versão mais nova | Produção (AWS) | Pendente | — | Backend / Frontend |
-| **AC-P1-04** | P1 — Editor Tiptap Seguro | Editar títulos, parágrafos, listas, negrito, itálico, checklists e citações; salvar e recarregar | JSON ProseMirror preservado e renderizado sem HTML bruto/XSS | Produção (DNS institucional) | Pendente | — | Frontend / QA |
-| **AC-P1-05** | P1 — Workspace Responsivo | Navegar via sidebar recolhível entre Dashboard, Páginas e Tarefas em desktop e mobile (`375x812`) | Zero regressão em `/tasks` e zero overflow horizontal crítico | Produção (DNS institucional) | Pendente | — | Frontend / QA |
+| ID | Escopo | Cenário / Teste Reproduzível | Tipo de Validação | Ambiente Exigido | Estado | Data |
+|---|---|---|---|---|---|---|
+| **AC-P1-01** | P1 — CRUD Páginas | `POST/GET/PATCH/DELETE /pages` autenticado + recarga (`F5`) | Automatizado (Lambda+DynamoDB 22/11) + **Manual pendente (captura formal)** | Produção (AWS + DynamoDB) | **Pendente** (validado informalmente no navegador em 22/11; registrar evidência formal na Seção 4) | — |
+| **AC-P1-02** | P1 — Isolamento Páginas | `Usuário B` tenta `GET/PATCH/DELETE /pages/{id}` do `Usuário A`; ID token (`401`) e `ownerId` no body (`400`) rejeitados | Automatizado (Lambda real 22/11) + **Manual pendente (2 contas reais via HTTP)** | Produção (AWS + 2 usuários reais) | **Pendente** (coberto por `smoke_api.py` na Seção 4) | — |
+| **AC-P1-03** | P1 — Conflito de Salvamento | Enviar `PATCH /pages/{id}` com `expectedVersion` desatualizado (`409 CONFLICT`) | Automatizado (unitário + Lambda real + `smoke_api.py`) + **Manual pendente (2 abas/HTTP DNS oficial)** | Produção (AWS) | **Pendente** | — |
+| **AC-P1-04** | P1 — Editor Tiptap Seguro | Editar títulos, parágrafos, listas, negrito, itálico, checklists e citações; salvar e recarregar | **Manual (navegador)** | Produção (DNS institucional) | **Pendente** | — |
+| **AC-P1-05** | P1 — Workspace Responsivo | Navegar via sidebar recolhível entre Dashboard, Páginas e Tarefas em desktop e mobile (`375x812`) | **Manual (navegador)** | Produção (DNS institucional) | **Pendente** | — |
 
 ---
 
-## 2. Registro de Testes Executados
+## 2. Registro de Testes Automatizados
 
-### 22/11/2026 — Verificação Local (Sem Recursos AWS)
-> **Nota de integridade:** Os testes abaixo validam apenas o código local e contratos em memória. Nenhum critério `AC-01`..`AC-15` que exige AWS/Cognito/DynamoDB/DNS institucional foi marcado como concluído.
+### 23/11/2026 — Estabilização, Segurança e Validação no Fedora Linux (Python 3.12.14 + Node v26.12.1)
+> **Escopo:** Testes automatizados locais + auditoria de segurança + verificação somente leitura dos domínios institucionais em produção. Nenhum recurso AWS foi modificado e nenhuma implantação foi executada.
 
-| Suíte | Comando | Ambiente | Resultado |
+| Tipo | Suíte / Verificação | Comando | Ambiente | Resultado |
+|---|---|---|---|---|
+| **Automatizado (Segurança)** | Auditoria npm após correção de `vitest` (`^3.1.2` -> `^4.1.12`) | `cd apps/web && npm audit` | Fedora 45 / Node `v26.12.1` / npm `11.20.0` | **0 vulnerabilities** (resolvidas 2 críticas em `tinypool` e 1 moderada em `@vitest/mocker`/`vitest`; zero pacotes de produção eram afetados) |
+| **Automatizado (Local)** | Backend regressão P0 + P1 (`services/api`) | `services/api/.venv/bin/pytest services/api/tests -v` | Fedora 45 / **Python `3.12.14`** / pytest `9.2.0` | **39 passed** — compatibilidade nativa com runtime Lambda `python3.12` validada |
+| **Automatizado (Local)** | Compilação sintática Python 3.12 + Empacotamento ZIP | `python -m compileall -q services/api/src infra tests` + `python services/api/build_package.py` | Fedora 45 / Python `3.12.14` | **PASS** — `services/api/dist/acadflow-api.zip` gerado com 9 módulos puros `acadflow_api/*.py` |
+| **Automatizado (Local)** | Smoke HTTP local (`/tasks` + `/pages`) | `local_server.py` + `tests/e2e/smoke_api.py` | Fedora 45 / Python `3.12.14` (in-memory) | **26/26 PASS** (`/health`, `401`, `400`, CRUD `/tasks` e `/pages`, `409`, anti-IDOR `404`) |
+| **Automatizado (Local)** | Frontend unitário (Vitest 4.1.12) | `cd apps/web && npm run test` | Fedora 45 / Vitest `4.1.12` | **16 passed** (6 arquivos: `tasksApi`, `pagesApi`, `oidcConfig`, `validation`, `pageValidation`, `autosaveState`) |
+| **Automatizado (Local)** | Frontend typecheck + build de produção | `cd apps/web && npm run typecheck && npm run build` | Fedora 45 / TypeScript `5.8.3` + Vite `6.4.6` | **PASS** — zero erros de tipagem e bundle gerado em `apps/web/dist/` |
+| **Automatizado (Produção — Somente Leitura)** | Verificação dos 2 domínios institucionais HTTPS | `services/api/.venv/bin/python tests/e2e/verify_prod_domains.py` | Produção HTTPS (`enthonyaraujo.grupo-03.sd.ufersa.dev.br` + `api.enthonyaraujo.grupo-03.sd.ufersa.dev.br`) | **18/18 PASS** (TLSv1.3, 5 rotas SPA `200`, bundle oficial, `/health` `200`, `/tasks` e `/pages` `401`, CORS `204`, Cognito Hosted UI `200`) |
+| **Automatizado (AWS — Somente Leitura)** | Diagnóstico completo de conta e recursos AWS | `services/api/.venv/bin/python infra/check_aws_env.py --hosted-zone-id Z0906692126CHKWN9GQ2U --owner-filter enthonyaraujo` | Fedora 45 (`~/.aws` `700` / `credentials` `600`, conta `****2503`, `us-east-1`) | **14/14 autorizado** — confirmados ativos: DynamoDB (`acadflow-tasks`, `acadflow-pages`), Lambda (`acadflow-api`, `python3.12`), HTTP API (`u0mxrf6mnk`), Cognito (`us-east-1_tKA6pURyD`), Amplify (`dysbk8tmbj14k`), ACM (`ISSUED`) e Route 53 (`Z0906692126CHKWN9GQ2U`); recursos prévios preservados intactos (lembrar que credenciais do Learner Lab expiram a cada ~4h) |
+
+### 22/11/2026 — Histórico de Testes Reais na AWS (Passos A, B, C e D)
+> Evidências executadas contra a conta AWS Learner Lab (`****2503`, `us-east-1`) durante provisionamento e cutover.
+
+| Tipo | Suíte / Alvo Real | Ambiente | Resultado |
 |---|---|---|---|
-| Backend unitário (`services/api`) | `.\services\api\.venv\Scripts\pytest.exe services/api/tests -v` | Windows / Python 3.15.2 (pendente validar em Python 3.12) | **24 passed** (validação, JWT `token_use=="access"` + `sub` + `exp`, CRUD, rejeição de `ownerId`, anti-IDOR `404`, `DynamoDBTaskRepository` via `Query` + chaves compostas) |
-| Empacotamento Lambda | `python services/api/build_package.py` | Local | **OK** — gerou `services/api/dist/acadflow-api.zip` (6 arquivos `acadflow_api/*.py`, handler `acadflow_api.handler.lambda_handler`) |
-| Smoke HTTP local (`smoke_api.py` -> `local_server.py`) | `smoke_api.run_suite('http://127.0.0.1:18081')` | Local (in-memory dev server) | **14/14 checks PASS** (`/health` 200, sem token 401, inválido 401, ID token 401, payload inválido 400, `ownerId` 400, CRUD 201/200/204, cross-user 404) |
-| Dry-run Infraestrutura (`infra/provision_stack.py`) | `python infra/provision_stack.py --region REGION_PENDING --app-origin https://SEUNOME.grupo.sd.ufersa.dev.br` | Local (zero chamadas AWS) | **OK** — plano JSON impresso, nenhum recurso AWS alterado |
-| Frontend unitário (`apps/web`) | `npm.cmd run test` | Node v26.13.0 / Vitest 3.2.7 | **8 passed** (3 arquivos: `tasksApi`, `oidcConfig` PKCE/logout/revoke, `validation`) |
-| Frontend typecheck + build | `npm.cmd run build` | TypeScript 5.8 + Vite 6.4.6 | **PASS** — `tsc -b && vite build` concluído em 851ms (zero erros) |
-
-### 22/11/2026 — Verificação Local Pós-Evolução P1 (Workspace + `/pages` + Tiptap)
-> **Nota de integridade:** Testes locais validam regressão P0 + evolução P1 em memória/build local. Todos os critérios `AC-01`..`AC-15` e `AC-P1-01`..`AC-P1-05` que dependem de AWS/Cognito/DynamoDB/DNS institucional permanecem **Pendente** até implantação real.
-
-| Suíte | Comando | Ambiente | Resultado |
-|---|---|---|---|
-| Backend regressão P0 + P1 (`services/api`) | `.\services\api\.venv\Scripts\pytest.exe services/api/tests -v` | Windows / Python 3.15.2 (pendente validar em Python 3.12) | **39 passed in 0.36s** (24 P0 + 15 P1: `/pages` CRUD, limite 100 KB, profundidade <= 20, `Decimal` version, `token_use=="access"`, conflito `409`, anti-IDOR `404`, `DynamoDBPageRepository`) |
-| Empacotamento Lambda | `python services/api/build_package.py` | Local | **OK** — `services/api/dist/acadflow-api.zip` (9 módulos `acadflow_api/*.py`) |
-| Smoke HTTP local (`/tasks` + `/pages`) | `smoke_api.run_suite('http://127.0.0.1:18082')` | Local (in-memory dev server) | **26/26 checks PASS** (14 P0 + 12 P1 incluindo `409` conflito de versão e `404` cruzado em `/pages`) |
-| Dry-run Infraestrutura (`infra/provision_stack.py`) | `python infra/provision_stack.py --region REGION_PENDING --app-origin https://SEUNOME.grupo.sd.ufersa.dev.br` | Local (zero chamadas AWS) | **OK** — inclui `acadflow-tasks`, `acadflow-pages`, `PAGES_TABLE` e rotas `/pages*` |
-| Frontend regressão P0 + P1 (`apps/web`) | `npm.cmd run test` | Node v26.13.0 / Vitest 3.2.7 | **13 passed** (5 arquivos: `tasksApi`, `pagesApi` incluindo `409`, `oidcConfig`, `validation`, `pageValidation`) |
-| Frontend typecheck + build (com Tiptap) | `npm.cmd run build` | TypeScript 5.8 + Vite 6.4.6 | **PASS** — `tsc -b && vite build` concluído em 2.28s (zero erros) |
-
-### 22/11/2026 — Testes Reais na AWS (Passos A, B e D — URLs Temporárias + Python 3.12 + DynamoDB)
-> **Nota de integridade:** Os testes abaixo foram executados contra recursos reais na AWS (`us-east-1`, conta `****2503`). Critérios que exigem login real de usuários Cognito controlados pelo usuário (`AC-05`, `AC-07`, `AC-09` via HTTP com JWTs reais, `AC-13`) e cutover do domínio `api.enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AC-02`, `AC-14`) permanecem **Pendente** até as próximas etapas autorizadas.
-
-| Suíte | Comando / Alvo Real | Ambiente | Resultado |
-|---|---|---|---|
-| Passo B1 — HTTP API HTTPS (`u0mxrf6mnk`) | `tests/e2e/aws_step_b_verify.py` contra `https://u0mxrf6mnk.execute-api.us-east-1.amazonaws.com` | AWS API Gateway HTTP API (`us-east-1`) | **8/8 PASS** (`/health` 200; `/tasks` e `/pages` sem token e token inválido -> 401; CORS libera Amplify temp e domínio institucional, bloqueia origem não autorizada) |
-| Passo B2 — Lambda `python3.12` + DynamoDB real | `lambda:Invoke` em `acadflow-api` gravando em `acadflow-tasks` e `acadflow-pages` | AWS Lambda `python3.12` + DynamoDB (`us-east-1`) | **18/18 PASS** (rejeição `token_use` ausente/ID token 401; rejeição `ownerId` 400; CRUD real `/tasks` + anti-IDOR 404; CRUD real `/pages` com AST Tiptap + conversão recursiva `Decimal->int` corrigida + conflito otimista `409` + anti-IDOR 404; itens de teste limpos) |
-| Passo B3 — CloudWatch Logs + Cognito Hosted UI | `/aws/lambda/acadflow-api` + `https://acadflow-enthony-sd.auth.us-east-1.amazoncognito.com/oauth2/authorize` | AWS CloudWatch + Cognito (`us-east-1`) | **3/3 PASS** (log group ativo; Hosted UI responde `200` aceitando callbacks da URL Amplify temporária e de `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br/auth/callback`) |
-| Passo D — Amplify Hosting + SPA Rewrite | `GET /`, `/login`, `/auth/callback`, `/tasks`, `/pages/demo-id` em `https://main.dysbk8tmbj14k.amplifyapp.com` | AWS Amplify (`dysbk8tmbj14k`) | **5/5 PASS** (`200 OK` com HTML do AcadFlow em todas as rotas SPA, zero `404`) |
-| Passo D — Domínio Institucional Frontend (`AC-01`) | `status=AVAILABLE` + `GET /`, `/login`, `/auth/callback`, `/tasks`, `/pages/demo-id` em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` + teste real no navegador (cadastro/verificação por e-mail Cognito PKCE + criação/salvamento até v5 de páginas no DynamoDB) | Produção (HTTPS institucional) | **5/5 PASS** + validado no navegador pelo usuário (`AC-01` concluído) |
-| Passo C — Cutover Oficial da API (`AC-02`, `AC-03`) | `infra/cutover_api_domain.py` (`mqdslq`: `war28zsged` -> `u0mxrf6mnk`) + `tests/e2e/verify_prod_domains.py` + Amplify `jobId=2` | Produção (Ambos os DNS institucionais HTTPS) | **18/18 PASS** — TLSv1.3 em ambos os domínios; bundle ao vivo `/assets/index-VM4fkVPj.js` confirmado apontando exclusivamente para `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br`; `/health` 200; `/tasks` e `/pages` sem token/inválido 401; CORS 204 para origem institucional; `war28zsged` preservado intacto |
+| **Automatizado (AWS)** | Passo B1 — HTTP API HTTPS (`u0mxrf6mnk`) via `aws_step_b_verify.py` | API Gateway HTTP API (`us-east-1`) | **8/8 PASS** |
+| **Automatizado (AWS)** | Passo B2 — `lambda:Invoke` em `acadflow-api` (`python3.12`) + DynamoDB real (`acadflow-tasks` e `acadflow-pages`) | AWS Lambda `python3.12` + DynamoDB | **18/18 PASS** (rejeição `token_use` ausente/ID token `401`; `ownerId` `400`; CRUD `/tasks` e `/pages`; `409`; anti-IDOR `404`; itens de teste limpos) |
+| **Automatizado (AWS)** | Passo B3 — CloudWatch Logs + Cognito Hosted UI | CloudWatch + Cognito (`us-east-1`) | **3/3 PASS** |
+| **Automatizado (Produção)** | Passo D — Amplify Hosting + SPA Rewrite + Domínio Frontend (`AC-01`) | Amplify `dysbk8tmbj14k` + HTTPS institucional | **5/5 PASS** + acesso autenticado validado no navegador pelo aluno |
+| **Automatizado (Produção)** | Passo C — Cutover Oficial da API (`mqdslq`: `war28zsged` -> `u0mxrf6mnk`) + `verify_prod_domains.py` (`AC-02`, `AC-03`) | Ambos os domínios HTTPS institucionais | **18/18 PASS** (`war28zsged` preservada intacta) |
 
 ---
 
-## 3. Checklist de Capturas para a Apresentação (27/11/2026)
+## 3. Estabilizações Locais Preparadas (23/11/2026)
 
-- [ ] Frontend carregado no domínio institucional HTTPS (`AC-01`, `AC-11`)
-- [ ] `GET /health` no domínio institucional da API em HTTPS (`AC-02`)
-- [ ] Chamada `GET /tasks` sem token (`401`) e com ID token/inválido (`401`/`403`) (`AC-03`, `AC-04`)
-- [ ] Chamada `GET /tasks` com `access_token` válido (`200`), com token redigido/oculto (`AC-05`)
-- [ ] CRUD completo + persistência após recarga (`AC-06`, `AC-07`, `AC-08`)
-- [ ] Isolamento entre Usuário A e Usuário B (`404`) (`AC-09`)
-- [ ] Recursos reais no console AWS (Amplify, API Gateway, Lambda, DynamoDB, Cognito) sem credenciais expostas (`AC-12`, `AC-15`)
+> **Importante:** As correções locais abaixo já estão validadas por testes e build no Fedora, mas **ainda não foram implantadas no AWS Amplify** (nenhum deploy foi executado sem autorização). Caso deseje publicá-las antes da apresentação de 27/11, será necessário renovar o Learner Lab e autorizar um novo deploy do frontend.
+
+1. **Dependências (`apps/web/package.json`):** `vitest` atualizado de `^3.1.2` para `^4.1.12` (`npm audit` zerado; compatível com `vite@6` e Node 20+).
+2. **Estabilidade do auto-save (`PageEditorPage.tsx` + `utils/autosaveState.ts`):** bloqueio de `PATCH` concorrente (evita `409` auto-infligido ao clicar **Salvar** durante debounce), preservação de edições digitadas durante salvamento em voo, proteção contra troca rápida de página e alerta `beforeunload` com alterações não salvas.
+3. **Bloqueio efetivo em conflito `409` (`RichTextEditor.tsx` + `PageEditorPage.tsx`):** `editor.setEditable(!disabled)` sincronizado reativamente + bloqueio do campo de título e ícones até o usuário clicar em **Recarregar página**.
+4. **Preservação de formulário em erro (`TaskForm.tsx` / `TasksPage.tsx`):** só limpa os campos após confirmação de sucesso da API.
+5. **Renomeação segura de páginas (`PagesIndexPage.tsx`):** valida título antes da chamada e atualiza a lista automaticamente em caso de `409`.
+
+---
+
+## 4. Roteiro de Validação Final com 2 Contas Reais (Sem Inventar Credenciais)
+
+> Utilize **duas contas reais controladas por você** no Cognito User Pool `acadflow-users` (`us-east-1_tKA6pURyD`), por exemplo dois endereços de e-mail próprios distintos (`Usuário A` e `Usuário B`). **Nunca** salve tokens em arquivos do repositório nem os exiba em capturas de tela.
+
+### Etapa 1 — Validação Manual no Navegador (Produção HTTPS)
+1. **Login e Dashboard (`AC-01`, `AC-05`, `AC-14`):**
+   - Abra uma janela normal em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` com DevTools (`Network` aberto).
+   - Faça login com o **`Usuário A`** via Amazon Cognito (PKCE).
+   - Confirme no `Network` chamadas HTTPS para `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br/tasks` e `/pages` com `200 OK` e cabeçalho `Authorization: Bearer ...`.
+2. **CRUD de Tarefas + Persistência (`AC-06`, `AC-07`, `AC-08`):**
+   - Crie uma tarefa (`POST /tasks` -> `201`), altere o status (`PATCH /tasks/{id}` -> `200`), pressione **`F5`** e confirme que a alteração permanece salva no DynamoDB.
+   - Exclua uma tarefa de teste (`DELETE /tasks/{id}` -> `204`) e confirme ausência após **`F5`**.
+3. **Páginas, Editor Tiptap e Auto-save (`AC-P1-01`, `AC-P1-03`, `AC-P1-04`):**
+   - Crie uma página, adicione título (`H2`), texto em **negrito**/*itálico*, lista, checklist e citação; aguarde o indicador mudar para `Salvo (v2)` (ou clique em **Salvar**), pressione **`F5`** e confirme preservação integral do conteúdo.
+   - *(Conflito `409`)* Abra a mesma página em uma segunda aba do `Usuário A`, salve uma edição na Aba 1 e tente salvar na Aba 2 -> confirme alerta `409` e recuperação via **Recarregar página**.
+4. **Responsividade Mobile + SPA Rewrite (`AC-11`, `AC-P1-05`):**
+   - No DevTools, ative viewport **`375x812`**, navegue pelo menu drawer entre Dashboard, Tarefas e Páginas, verifique ausência de overflow horizontal e pressione **`F5`** em `/tasks` e `/pages/<id>` (deve retornar `200`, nunca `404`).
+5. **Logout (`AC-13`):**
+   - Clique em **Sair**, confirme limpeza do `sessionStorage`, redirecionamento ao `/logout` do Cognito e redirecionamento para `/login` ao tentar acessar `/tasks`.
+
+### Etapa 2 — Prova Automatizada de Isolamento entre 2 Contas Reais (`AC-04`, `AC-05`–`AC-10`, `AC-P1-01`–`AC-P1-03`)
+Com o `Usuário A` autenticado em uma janela normal e o `Usuário B` em uma janela anônima em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br`:
+
+1. Extraia os tokens temporários da sessão do navegador (`Application -> Session Storage -> oidc.user:...`) **apenas para variáveis de ambiente em memória no terminal** (use espaço antes de `export` ou `read -s` para evitar gravar no histórico do shell):
+   ```bash
+   read -rs -p "Access Token Usuário A: " ACADFLOW_TOKEN_A; echo
+   read -rs -p "ID Token Usuário A: " ACADFLOW_ID_TOKEN_A; echo
+   read -rs -p "Access Token Usuário B: " ACADFLOW_TOKEN_B; echo
+   export ACADFLOW_TOKEN_A ACADFLOW_ID_TOKEN_A ACADFLOW_TOKEN_B
+   ```
+2. Execute a suíte sanitizada [tests/e2e/smoke_api.py](../tests/e2e/smoke_api.py) contra o domínio oficial da API (o script **nunca imprime tokens** e remove os itens de teste ao final):
+   ```bash
+   services/api/.venv/bin/python tests/e2e/smoke_api.py \
+     --api-url https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br
+   ```
+3. Limpe imediatamente as variáveis da sessão ao concluir:
+   ```bash
+   unset ACADFLOW_TOKEN_A ACADFLOW_ID_TOKEN_A ACADFLOW_TOKEN_B
+   ```
+4. **Critérios comprovados por esta execução (26/26 PASS):**
+   - `AC-02` (`/health` `200`), `AC-03` (sem token `401`), `AC-04` (token inválido `401` + **ID token real rejeitado com `401`/`403`**),
+   - `AC-05`/`AC-06`/`AC-07`/`AC-08`/`AC-10` (CRUD completo + validação `400` + rejeição de `ownerId` `400`),
+   - **`AC-09` e `AC-P1-02`** (`Usuário B` recebe **`404`** ao tentar `GET`, `PATCH` ou `DELETE` em tarefa ou página pertencente ao `Usuário A`),
+   - `AC-P1-01` e `AC-P1-03` (CRUD `/pages` + conflito otimista `409`).
+
+---
+
+## 5. Checklist de Capturas e Preparação para a Apresentação (27/11/2026)
+
+- [ ] Executar Etapa 1 e Etapa 2 da Seção 4 com 2 contas reais e atualizar os estados `Pendente` -> `Aceito` nesta tabela.
+- [ ] Captura do frontend carregado no domínio institucional HTTPS em desktop e mobile `375x812` (`AC-01`, `AC-11`, `AC-P1-05`).
+- [ ] Captura de `GET /health` (`200`) e `GET /tasks` sem token (`401`) / com ID token (`401`/`403`) no domínio institucional da API (`AC-02`, `AC-03`, `AC-04`).
+- [ ] Captura do DevTools Network autenticado (`200`/`201`/`204`) com cabeçalho `Authorization` oculto/redigido (`AC-05`, `AC-14`).
+- [ ] Captura do CRUD de tarefas e páginas após recarga `F5` (`AC-06`, `AC-07`, `AC-08`, `AC-P1-01`, `AC-P1-04`).
+- [ ] Saída sanitizada do `smoke_api.py` comprovando isolamento `404` entre `Usuário A` e `Usuário B` (`AC-09`, `AC-P1-02`, `AC-P1-03`).
+- [ ] Captura do fluxo de Logout exigindo nova autenticação (`AC-13`).
+- [ ] Captura dos recursos reais no console AWS (Amplify, API Gateway, Lambda `python3.12`, DynamoDB `acadflow-tasks`/`acadflow-pages`, Cognito) sem credenciais expostas (`AC-12`, `AC-15`).
+- [ ] Conferir no dia 27/11 (antes da aula) se a sessão do Learner Lab precisa estar ativa apenas para abrir o console AWS (a aplicação publicada no Amplify/API Gateway/Lambda/DynamoDB/Cognito funciona independentemente da CLI local, mas verificar `verify_prod_domains.py` 15 min antes da apresentação!).
+- [ ] Confirmar formato de entrega no SIGAA antes de 27/11/2026 às 23h59.
