@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   CreateTaskInput,
   Task,
@@ -6,6 +6,7 @@ import type {
   TaskStatus,
 } from "../types/task";
 import { validateTaskForm } from "../utils/validation";
+import { IconAlert, IconClose, IconPlus, IconSave } from "./Icons";
 
 interface TaskFormProps {
   editingTask: Task | null;
@@ -26,6 +27,8 @@ export function TaskForm({
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [status, setStatus] = useState<TaskStatus>("pending");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (editingTask) {
@@ -58,6 +61,7 @@ export function TaskForm({
     const validationError = validateTaskForm(payload);
     if (validationError) {
       setLocalError(validationError);
+      titleInputRef.current?.focus();
       return;
     }
 
@@ -73,19 +77,30 @@ export function TaskForm({
   }
 
   return (
-    <section className="card" aria-labelledby="task-form-heading">
+    <section
+      className={`card task-form-card ${editingTask ? "is-editing" : ""}`}
+      aria-labelledby="task-form-heading"
+    >
       <div className="section-header">
-        <h2 id="task-form-heading">
-          {editingTask ? "Editar atividade" : "Nova atividade"}
-        </h2>
+        <div className="section-heading-group">
+          <h2 id="task-form-heading" className="section-title">
+            {editingTask ? "Editar atividade" : "Nova atividade"}
+          </h2>
+          <p className="section-caption">
+            {editingTask
+              ? "Atualize os dados e salve as alterações."
+              : "Cadastre uma entrega, prova ou etapa de estudo."}
+          </p>
+        </div>
         {editingTask && (
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-sm"
             onClick={onCancelEdit}
             disabled={submitting}
           >
-            Cancelar edição
+            <IconClose size={14} />
+            <span>Cancelar</span>
           </button>
         )}
       </div>
@@ -94,36 +109,54 @@ export function TaskForm({
         <div className="field">
           <label htmlFor="task-title">Título *</label>
           <input
+            ref={titleInputRef}
             id="task-title"
+            name="title"
             type="text"
+            autoComplete="off"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (localError) setLocalError(null);
+            }}
             maxLength={120}
             required
-            placeholder="Ex.: Entregar projeto final de Sistemas Distribuídos"
+            aria-invalid={Boolean(localError)}
+            aria-describedby={localError ? "task-title-error" : undefined}
+            placeholder="Ex.: Entregar projeto de Sistemas Distribuídos…"
             disabled={submitting}
           />
+          {localError && (
+            <p id="task-title-error" className="field-error" role="alert">
+              <IconAlert size={14} />
+              <span>{localError}</span>
+            </p>
+          )}
         </div>
 
         <div className="field">
           <label htmlFor="task-description">Descrição (opcional)</label>
           <textarea
             id="task-description"
+            name="description"
+            autoComplete="off"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={1000}
             rows={3}
-            placeholder="Detalhes, observações ou etapas da atividade"
+            placeholder="Detalhes, observações ou etapas da atividade…"
             disabled={submitting}
           />
         </div>
 
         <div className="form-row">
-          <div className="field">
+          <div className="field field-full">
             <label htmlFor="task-due">Prazo (opcional)</label>
             <input
               id="task-due"
+              name="dueDate"
               type="date"
+              autoComplete="off"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               disabled={submitting}
@@ -134,6 +167,7 @@ export function TaskForm({
             <label htmlFor="task-priority">Prioridade</label>
             <select
               id="task-priority"
+              name="priority"
               value={priority}
               onChange={(e) => setPriority(e.target.value as TaskPriority)}
               disabled={submitting}
@@ -148,6 +182,7 @@ export function TaskForm({
             <label htmlFor="task-status">Status</label>
             <select
               id="task-status"
+              name="status"
               value={status}
               onChange={(e) => setStatus(e.target.value as TaskStatus)}
               disabled={submitting}
@@ -159,19 +194,20 @@ export function TaskForm({
           </div>
         </div>
 
-        {localError && (
-          <p className="alert alert-error" role="alert">
-            {localError}
-          </p>
-        )}
-
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting
-              ? "Salvando..."
-              : editingTask
-                ? "Salvar alterações"
-                : "Criar atividade"}
+          <button
+            type="submit"
+            className="btn btn-primary btn-full"
+            disabled={submitting}
+          >
+            {editingTask ? <IconSave size={15} /> : <IconPlus size={15} />}
+            <span>
+              {submitting
+                ? "Salvando…"
+                : editingTask
+                  ? "Salvar alterações"
+                  : "Criar atividade"}
+            </span>
           </button>
         </div>
       </form>
