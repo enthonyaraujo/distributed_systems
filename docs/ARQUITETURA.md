@@ -11,7 +11,7 @@
 ### 1.1. Ambiente Local Inicial (Windows -> Migrado para Fedora Linux em 23/11/2026)
 - **Repositório:** `enthonyaraujo/distributed_systems` (branch `main`).
 - **Estação inicial (Windows):** Node.js `v26.13.0`, npm `11.20.0` (`npm.cmd`), Python `3.15.2` (runtime validado na AWS Lambda `python3.12` em `AC-15`).
-- **Estação alvo (Fedora Linux):** ver guia reproduzível completo em `docs/CONFIGURACAO_FEDORA.md` (Python 3.12 nativo, Node.js/npm e AWS CLI).
+- **Estação atual (Fedora Linux):** Python 3.12 (`services/api/.venv`), Node.js/npm e scripts multiplataforma Python em `infra/`.
 
 ### 1.2. Matriz de Permissões AWS (Verificada em 22/11/2026 — Somente Leitura)
 

@@ -25,16 +25,13 @@ Projeto final individual da disciplina de **Sistemas Distribuídos — UFERSA** 
 │   ├── WORKSPACE_ACADFLOW.md         # Especificação da evolução P1 (Workspace + Tiptap + /pages)
 │   ├── ARQUITETURA.md                # Decisões, contratos congelados e matriz real de permissões AWS
 │   ├── IMPLANTACAO.md                # Passos reproduzíveis de deploy, SPA rewrite, DNS e rollback
-│   ├── EVIDENCIAS.md                 # Matriz central AC-01..AC-15 + AC-P1-01..05 e testes executados
-│   └── CONFIGURACAO_FEDORA.md        # Guia completo de setup e continuidade no Fedora Linux
+│   └── EVIDENCIAS.md                 # Matriz central AC-01..AC-15 + AC-P1-01..05 e testes executados
 ├── .gitignore
 ├── .gitattributes
 └── README.md
 ```
 
 ## Execução Local (Fedora Linux — Padrão Recomendado)
-
-> Para o passo a passo completo no Fedora Linux (instalação de pacotes, SSH GitHub, `.env.local` e AWS Learner Lab), consulte [docs/CONFIGURACAO_FEDORA.md](docs/CONFIGURACAO_FEDORA.md).
 
 ### Backend (`services/api`)
 ```bash
@@ -61,7 +58,6 @@ npm run build
 *(No Windows PowerShell, use `npm.cmd` caso a `ExecutionPolicy` bloqueie `npm.ps1`, e ative o ambiente virtual com `.\services\api\.venv\Scripts\Activate.ps1`.)*
 
 ## Documentação
-- [docs/CONFIGURACAO_FEDORA.md](docs/CONFIGURACAO_FEDORA.md)
 - [docs/PLANO_PROJETO_FINAL.md](docs/PLANO_PROJETO_FINAL.md)
 - [docs/WORKSPACE_ACADFLOW.md](docs/WORKSPACE_ACADFLOW.md)
 - [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
