@@ -54,17 +54,27 @@ def _json_default(obj: Any) -> Any:
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
+BASE_SECURITY_HEADERS: dict[str, str] = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
 def json_response(status_code: int, payload: Any = None) -> dict[str, Any]:
     """Build an API Gateway HTTP API (Payload Format v2.0) JSON response."""
+    headers = dict(BASE_SECURITY_HEADERS)
     if status_code == 204 or payload is None:
         return {
             "statusCode": status_code,
-            "headers": {"Content-Type": "application/json"},
+            "headers": headers,
             "body": "",
         }
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": headers,
         "body": json.dumps(payload, ensure_ascii=False, default=_json_default),
     }
 

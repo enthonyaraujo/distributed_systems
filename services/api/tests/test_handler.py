@@ -51,6 +51,10 @@ def test_health_is_public() -> None:
     resp = handler(_make_event("GET", "/health"), None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"]) == {"status": "ok", "service": "acadflow-api"}
+    assert resp["headers"]["Cache-Control"] == "no-store"
+    assert resp["headers"]["X-Content-Type-Options"] == "nosniff"
+    assert resp["headers"]["X-Frame-Options"] == "DENY"
+    assert resp["headers"]["Referrer-Policy"] == "no-referrer"
 
 
 def test_tasks_rejects_missing_claims_and_non_access_tokens() -> None:

@@ -57,6 +57,131 @@ def test_validate_create_page_defaults_and_rich_doc() -> None:
     assert created["content"]["type"] == "doc"
 
 
+def test_validate_content_accepts_full_tiptap_supported_schema() -> None:
+    rich_doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [{"type": "text", "text": "Resumo de SD"}],
+            },
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Negrito", "marks": [{"type": "bold"}]},
+                    {"type": "text", "text": " e ", "marks": [{"type": "italic"}, {"type": "underline"}]},
+                    {"type": "text", "text": "codigo", "marks": [{"type": "code"}]},
+                    {"type": "text", "text": " riscado", "marks": [{"type": "strike"}]},
+                    {"type": "hardBreak"},
+                    {
+                        "type": "text",
+                        "text": "UFERSA",
+                        "marks": [
+                            {
+                                "type": "link",
+                                "attrs": {
+                                    "href": "https://ufersa.edu.br/curso",
+                                    "target": "_blank",
+                                    "rel": "noopener noreferrer nofollow",
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "type": "text",
+                        "text": "Contato",
+                        "marks": [{"type": "link", "attrs": {"href": "mailto:teste@example.org"}}],
+                    },
+                ],
+            },
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Item A"}]}],
+                    }
+                ],
+            },
+            {
+                "type": "orderedList",
+                "attrs": {"start": 1},
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Passo 1"}]}],
+                    }
+                ],
+            },
+            {
+                "type": "taskList",
+                "content": [
+                    {
+                        "type": "taskItem",
+                        "attrs": {"checked": False},
+                        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Estudar JWT"}]}],
+                    }
+                ],
+            },
+            {
+                "type": "blockquote",
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Citação"}]}],
+            },
+            {
+                "type": "codeBlock",
+                "attrs": {"language": "python"},
+                "content": [{"type": "text", "text": "print('ok')"}],
+            },
+            {"type": "horizontalRule"},
+        ],
+    }
+    validated = validate_create_page_payload({"title": "Documento completo", "content": rich_doc})
+    assert validated["content"] == rich_doc
+
+
+@pytest.mark.parametrize(
+    "unsafe_content",
+    [
+        # Disallowed node type (raw HTML / script / image)
+        {"type": "doc", "content": [{"type": "script", "content": [{"type": "text", "text": "alert(1)"}]}]},
+        {"type": "doc", "content": [{"type": "image", "attrs": {"src": "https://evil.example/x.png"}}]},
+        # Nested doc node
+        {"type": "doc", "content": [{"type": "doc", "content": []}]},
+        # Unknown top-level node key
+        {"type": "doc", "content": [{"type": "paragraph", "onClick": "alert(1)"}]},
+        # Invalid heading level (editor only allows 1..3)
+        {"type": "doc", "content": [{"type": "heading", "attrs": {"level": 6}}]},
+        {"type": "doc", "content": [{"type": "heading", "attrs": {"level": True}}]},
+        # Invalid taskItem checked type
+        {"type": "doc", "content": [{"type": "taskItem", "attrs": {"checked": "yes"}}]},
+        # Disallowed attributes on paragraph
+        {"type": "doc", "content": [{"type": "paragraph", "attrs": {"style": "background:url(javascript:alert(1))"}}]},
+        # Disallowed mark type
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "rawHtml"}]}]}]},
+        # Dangerous link schemes (XSS / obfuscated control chars)
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "  JavaScript:alert(1)"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "java\tscript:alert(1)"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "data:text/html,<script>alert(1)</script>"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "vbscript:msgbox(1)"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "https://", "target": "_blank"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "https://ok.example", "target": "_top"}}]}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x", "marks": [{"type": "link", "attrs": {"href": "https://ok.example", "onclick": "alert(1)"}}]}]}]},
+        # Text node missing text or carrying child content
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": 123}]}]},
+        {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "hi", "content": []}]}]},
+        # Invalid codeBlock language
+        {"type": "doc", "content": [{"type": "codeBlock", "attrs": {"language": "py; rm -rf /"}}]},
+    ],
+)
+def test_validate_content_rejects_disallowed_nodes_marks_and_dangerous_urls(
+    unsafe_content: dict[str, Any],
+) -> None:
+    with pytest.raises(ValidationError):
+        validate_create_page_payload({"title": "Payload inseguro", "content": unsafe_content})
+
+
 @pytest.mark.parametrize(
     "payload",
     [
