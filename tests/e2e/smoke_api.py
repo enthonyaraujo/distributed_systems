@@ -1,21 +1,57 @@
-"""Sanitized HTTP E2E acceptance test suite for AcadFlow (AC-02 through AC-10).
+"""Sanitized HTTP E2E acceptance test suite for AcadFlow (AC-02 through AC-10 + P1).
 
 Reads bearer tokens exclusively from environment variables so secrets never
 appear in command history, stdout or evidence files:
-  - ACADFLOW_TOKEN_A     (required for authenticated checks: User A access_token)
-  - ACADFLOW_TOKEN_B     (optional for AC-09 anti-IDOR checks: User B access_token)
-  - ACADFLOW_ID_TOKEN_A  (optional for AC-04 ID token rejection check)
+  - ACADFLOW_TOKEN_A         (required for authenticated checks: User A access_token)
+  - ACADFLOW_TOKEN_B         (optional for AC-09/AC-P1-02 anti-IDOR checks: User B access_token)
+  - ACADFLOW_ID_TOKEN_A      (optional for AC-04/AC-P1-02 ID token rejection check)
+  - ACADFLOW_EXPIRED_TOKEN   (optional for AC-04 real expired Cognito token check)
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
+
+OFFICIAL_API_HOST = "api.enthonyaraujo.grupo-03.sd.ufersa.dev.br"
+ALLOWED_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevent bearer tokens from ever being forwarded across HTTP redirects."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
+def _validate_target_api_url(api_url: str) -> str:
+    parsed = urllib.parse.urlsplit(api_url.strip())
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "https" and host == OFFICIAL_API_HOST and parsed.port in {None, 443}:
+        return f"https://{OFFICIAL_API_HOST}"
+    if parsed.scheme == "http" and host in ALLOWED_LOCAL_HOSTS:
+        return api_url.strip().rstrip("/")
+    raise ValueError(
+        f"Target URL blocked for token safety. Allowed targets: "
+        f"https://{OFFICIAL_API_HOST} or local http://127.0.0.1 / http://localhost."
+    )
+
+
+def _make_forged_expired_jwt() -> str:
+    def _b64u(obj: dict[str, Any]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(obj).encode("utf-8")).rstrip(b"=").decode("ascii")
+
+    return f"{_b64u({'alg': 'RS256', 'typ': 'JWT'})}.{_b64u({'sub': 'expired-probe', 'token_use': 'access', 'exp': 1})}.invalidsig"
 
 
 def _http_request(
@@ -35,7 +71,7 @@ def _http_request(
 
     req = urllib.request.Request(url=url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _OPENER.open(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8")
             return resp.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as err:
@@ -55,10 +91,16 @@ def _assert(condition: bool, label: str, detail: str) -> None:
 
 
 def run_suite(api_url: str) -> int:
-    base = api_url.rstrip("/")
+    base = _validate_target_api_url(api_url)
     token_a = os.environ.get("ACADFLOW_TOKEN_A", "").strip()
     token_b = os.environ.get("ACADFLOW_TOKEN_B", "").strip()
     id_token_a = os.environ.get("ACADFLOW_ID_TOKEN_A", "").strip()
+    expired_token = os.environ.get("ACADFLOW_EXPIRED_TOKEN", "").strip() or _make_forged_expired_jwt()
+
+    if token_a and token_b and token_a == token_b:
+        raise AssertionError(
+            "ACADFLOW_TOKEN_A and ACADFLOW_TOKEN_B must belong to two distinct Cognito accounts."
+        )
 
     # AC-02: Public health check
     status, body = _http_request("GET", f"{base}/health")
@@ -68,15 +110,29 @@ def run_suite(api_url: str) -> int:
     status, _ = _http_request("GET", f"{base}/tasks")
     _assert(status in {401, 403}, "AC-03 GET /tasks without token", f"status={status}")
 
-    # AC-04: Invalid token rejected
+    # AC-04: Invalid & expired tokens rejected
     status, _ = _http_request("GET", f"{base}/tasks", token="invalid.jwt.token")
     _assert(status in {401, 403}, "AC-04 GET /tasks invalid token", f"status={status}")
+
+    status, _ = _http_request("GET", f"{base}/tasks", token=expired_token)
+    _assert(status in {401, 403}, "AC-04 GET /tasks expired token", f"status={status}")
+
+    status, _ = _http_request("GET", f"{base}/pages")
+    _assert(status in {401, 403}, "AC-P1-02 GET /pages without token", f"status={status}")
+
+    status, _ = _http_request("GET", f"{base}/pages", token="invalid.jwt.token")
+    _assert(status in {401, 403}, "AC-P1-02 GET /pages invalid token", f"status={status}")
+
+    status, _ = _http_request("GET", f"{base}/pages", token=expired_token)
+    _assert(status in {401, 403}, "AC-P1-02 GET /pages expired token", f"status={status}")
 
     if id_token_a:
         status, _ = _http_request("GET", f"{base}/tasks", token=id_token_a)
         _assert(status in {401, 403}, "AC-04 GET /tasks with ID token rejected", f"status={status}")
+        status, _ = _http_request("GET", f"{base}/pages", token=id_token_a)
+        _assert(status in {401, 403}, "AC-P1-02 GET /pages with ID token rejected", f"status={status}")
     else:
-        print("[SKIP] AC-04 ID token check — set ACADFLOW_ID_TOKEN_A to verify.")
+        print("[SKIP] AC-04/AC-P1-02 ID token checks — set ACADFLOW_ID_TOKEN_A to verify.")
 
     if not token_a:
         print("[SKIP] AC-05..AC-10 authenticated CRUD checks — set ACADFLOW_TOKEN_A.")
@@ -115,52 +171,62 @@ def run_suite(api_url: str) -> int:
     _assert(status == 201 and isinstance(created, dict) and "id" in created, "AC-06 POST /tasks", f"status={status}")
     task_id = created["id"]
 
-    # AC-05: List own tasks
-    status, listed = _http_request("GET", f"{base}/tasks", token=token_a)
-    ids = [item.get("id") for item in (listed or {}).get("items", [])] if isinstance(listed, dict) else []
-    _assert(status == 200 and task_id in ids, "AC-05 GET /tasks", f"status={status}, count={len(ids)}")
+    task_delete_status: int | None = None
+    try:
+        # AC-05: List own tasks
+        status, listed = _http_request("GET", f"{base}/tasks", token=token_a)
+        ids = [item.get("id") for item in (listed or {}).get("items", [])] if isinstance(listed, dict) else []
+        _assert(status == 200 and task_id in ids, "AC-05 GET /tasks", f"status={status}, count={len(ids)}")
 
-    # AC-07: Update task
-    status, updated = _http_request(
-        "PATCH",
-        f"{base}/tasks/{task_id}",
-        token=token_a,
-        payload={"status": "in_progress"},
-    )
-    _assert(status == 200 and isinstance(updated, dict) and updated.get("status") == "in_progress", "AC-07 PATCH /tasks/{id}", f"status={status}")
+        # AC-07: Update task
+        status, updated = _http_request(
+            "PATCH",
+            f"{base}/tasks/{task_id}",
+            token=token_a,
+            payload={"status": "in_progress"},
+        )
+        _assert(status == 200 and isinstance(updated, dict) and updated.get("status") == "in_progress", "AC-07 PATCH /tasks/{id}", f"status={status}")
 
-    # AC-09: Cross-user isolation
-    if token_b:
-        for method, extra_payload in [
-            ("GET", None),
-            ("PATCH", {"status": "done"}),
-            ("DELETE", None),
-        ]:
-            status, _ = _http_request(
-                method,
-                f"{base}/tasks/{task_id}",
-                token=token_b,
-                payload=extra_payload,
+        # AC-09: Cross-user isolation on tasks (list + direct GET/PATCH/DELETE + User A intact)
+        if token_b:
+            status, list_b = _http_request("GET", f"{base}/tasks", token=token_b)
+            ids_b = [item.get("id") for item in (list_b or {}).get("items", [])] if isinstance(list_b, dict) else []
+            _assert(status == 200 and task_id not in ids_b, "AC-09 User B GET /tasks does not list User A task", f"status={status}")
+
+            for method, extra_payload in [
+                ("GET", None),
+                ("PATCH", {"status": "done"}),
+                ("DELETE", None),
+            ]:
+                status, _ = _http_request(
+                    method,
+                    f"{base}/tasks/{task_id}",
+                    token=token_b,
+                    payload=extra_payload,
+                )
+                _assert(status == 404, f"AC-09 User B {method} User A task", f"status={status}")
+
+            status, verify_a = _http_request("GET", f"{base}/tasks/{task_id}", token=token_a)
+            _assert(
+                status == 200 and isinstance(verify_a, dict) and verify_a.get("status") == "in_progress",
+                "AC-09 User A task intact after User B attempts",
+                f"status={status}",
             )
-            _assert(status == 404, f"AC-09 User B {method} User A task", f"status={status}")
-    else:
-        print("[SKIP] AC-09 cross-user isolation — set ACADFLOW_TOKEN_B to verify.")
+        else:
+            print("[SKIP] AC-09 cross-user isolation — set ACADFLOW_TOKEN_B to verify.")
+    finally:
+        # AC-08: Always attempt cleanup of the ephemeral test task owned by User A
+        try:
+            task_delete_status, _ = _http_request("DELETE", f"{base}/tasks/{task_id}", token=token_a)
+        except Exception as cleanup_exc:
+            print(f"[WARN] Cleanup DELETE /tasks/{{id}} raised {cleanup_exc.__class__.__name__}", file=sys.stderr)
 
-    # AC-08: Delete own task
-    status, _ = _http_request("DELETE", f"{base}/tasks/{task_id}", token=token_a)
-    _assert(status == 204, "AC-08 DELETE /tasks/{id}", f"status={status}")
+    _assert(task_delete_status == 204, "AC-08 DELETE /tasks/{id}", f"status={task_delete_status}")
 
     status, _ = _http_request("GET", f"{base}/tasks/{task_id}", token=token_a)
     _assert(status == 404, "AC-08 GET deleted task returns 404", f"status={status}")
 
     # --- P1 Workspace Pages (/pages) checks ---
-    status, _ = _http_request("GET", f"{base}/pages")
-    _assert(status in {401, 403}, "AC-P1-02 GET /pages without token", f"status={status}")
-
-    if id_token_a:
-        status, _ = _http_request("GET", f"{base}/pages", token=id_token_a)
-        _assert(status in {401, 403}, "AC-P1-02 GET /pages ID token rejected", f"status={status}")
-
     status, _ = _http_request(
         "POST",
         f"{base}/pages",
@@ -191,46 +257,68 @@ def run_suite(api_url: str) -> int:
     )
     page_id = page["id"]
 
-    status, pages_list = _http_request("GET", f"{base}/pages", token=token_a)
-    p_ids = [p.get("id") for p in (pages_list or {}).get("items", [])] if isinstance(pages_list, dict) else []
-    _assert(status == 200 and page_id in p_ids, "AC-P1-01 GET /pages", f"status={status}, count={len(p_ids)}")
+    page_delete_status: int | None = None
+    try:
+        status, pages_list = _http_request("GET", f"{base}/pages", token=token_a)
+        p_ids = [p.get("id") for p in (pages_list or {}).get("items", [])] if isinstance(pages_list, dict) else []
+        _assert(status == 200 and page_id in p_ids, "AC-P1-01 GET /pages", f"status={status}, count={len(p_ids)}")
 
-    status, page_updated = _http_request(
-        "PATCH",
-        f"{base}/pages/{page_id}",
-        token=token_a,
-        payload={"title": "Anotação Atualizada", "expectedVersion": 1},
-    )
-    _assert(
-        status == 200 and isinstance(page_updated, dict) and page_updated.get("version") == 2,
-        "AC-P1-01 PATCH /pages/{id}",
-        f"status={status}",
-    )
+        status, page_updated = _http_request(
+            "PATCH",
+            f"{base}/pages/{page_id}",
+            token=token_a,
+            payload={"title": "Anotação Atualizada", "expectedVersion": 1},
+        )
+        _assert(
+            status == 200 and isinstance(page_updated, dict) and page_updated.get("version") == 2,
+            "AC-P1-01 PATCH /pages/{id}",
+            f"status={status}",
+        )
 
-    status, _ = _http_request(
-        "PATCH",
-        f"{base}/pages/{page_id}",
-        token=token_a,
-        payload={"title": "Versão obsoleta", "expectedVersion": 1},
-    )
-    _assert(status == 409, "AC-P1-03 PATCH /pages/{id} stale version conflict", f"status={status}")
+        status, _ = _http_request(
+            "PATCH",
+            f"{base}/pages/{page_id}",
+            token=token_a,
+            payload={"title": "Versão obsoleta", "expectedVersion": 1},
+        )
+        _assert(status == 409, "AC-P1-03 PATCH /pages/{id} stale version conflict", f"status={status}")
 
-    if token_b:
-        for method, extra_payload in [
-            ("GET", None),
-            ("PATCH", {"title": "Cross-user", "expectedVersion": 2}),
-            ("DELETE", None),
-        ]:
-            status, _ = _http_request(
-                method,
-                f"{base}/pages/{page_id}",
-                token=token_b,
-                payload=extra_payload,
+        if token_b:
+            status, pages_b = _http_request("GET", f"{base}/pages", token=token_b)
+            p_ids_b = [p.get("id") for p in (pages_b or {}).get("items", [])] if isinstance(pages_b, dict) else []
+            _assert(status == 200 and page_id not in p_ids_b, "AC-P1-02 User B GET /pages does not list User A page", f"status={status}")
+
+            for method, extra_payload in [
+                ("GET", None),
+                ("PATCH", {"title": "Cross-user", "expectedVersion": 2}),
+                ("DELETE", None),
+            ]:
+                status, _ = _http_request(
+                    method,
+                    f"{base}/pages/{page_id}",
+                    token=token_b,
+                    payload=extra_payload,
+                )
+                _assert(status == 404, f"AC-P1-02 User B {method} User A page", f"status={status}")
+
+            status, verify_page_a = _http_request("GET", f"{base}/pages/{page_id}", token=token_a)
+            _assert(
+                status == 200
+                and isinstance(verify_page_a, dict)
+                and verify_page_a.get("title") == "Anotação Atualizada"
+                and verify_page_a.get("version") == 2,
+                "AC-P1-02 User A page intact after User B attempts",
+                f"status={status}",
             )
-            _assert(status == 404, f"AC-P1-02 User B {method} User A page", f"status={status}")
+        else:
+            print("[SKIP] AC-P1-02 cross-user page isolation — set ACADFLOW_TOKEN_B to verify.")
+    finally:
+        try:
+            page_delete_status, _ = _http_request("DELETE", f"{base}/pages/{page_id}", token=token_a)
+        except Exception as cleanup_exc:
+            print(f"[WARN] Cleanup DELETE /pages/{{id}} raised {cleanup_exc.__class__.__name__}", file=sys.stderr)
 
-    status, _ = _http_request("DELETE", f"{base}/pages/{page_id}", token=token_a)
-    _assert(status == 204, "AC-P1-01 DELETE /pages/{id}", f"status={status}")
+    _assert(page_delete_status == 204, "AC-P1-01 DELETE /pages/{id}", f"status={page_delete_status}")
 
     status, _ = _http_request("GET", f"{base}/pages/{page_id}", token=token_a)
     _assert(status == 404, "AC-P1-01 GET deleted page returns 404", f"status={status}")
@@ -244,7 +332,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         return run_suite(args.api_url)
-    except AssertionError as exc:
+    except (AssertionError, ValueError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
 
