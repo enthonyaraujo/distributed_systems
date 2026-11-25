@@ -86,13 +86,13 @@ services/api/.venv/bin/python services/api/build_package.py
    - **Source:** `</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json)$)([^.]+$)/>`
    - **Target:** `/index.html` | **Type:** `200 (Rewrite)`
 4. **Cabeçalhos de segurança (`customHeaders`):** versionados em [infra/amplify_security_headers.yml](../infra/amplify_security_headers.yml) e ativos em produção com `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` e **`Content-Security-Policy-Report-Only`**.
-5. **Deploy ativo em produção (23/11/2026):** `acadflow-web` (`dysbk8tmbj14k`, branch `main`, **`jobId=3`**, bundle `/assets/index-BLG3afUM.js`; baseline anterior `jobId=2` preservado para rollback).
+5. **Deploy ativo em produção (23/11/2026):** `acadflow-web` (`dysbk8tmbj14k`, branch `main`, **`jobId=4`**, bundle `/assets/index-B1UuEFK5.js` + `/assets/index-be1kFgtZ.css` + `/favicon.svg`; baseline anterior `jobId=3` preservado para rollback imediato).
 
 ---
 
 ## 5. Domínios Institucionais HTTPS, Cutover da API e Procedimentos de Rollback
 
-- **Frontend:** `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AVAILABLE`, TLSv1.3 até `2027-06-08`) -> Amplify `dysbk8tmbj14k` (`main`, `jobId=3`).
+- **Frontend:** `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AVAILABLE`, TLSv1.3 até `2027-06-08`) -> Amplify `dysbk8tmbj14k` (`main`, `jobId=4`).
 - **API:** `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AVAILABLE`, TLSv1.3 até `2027-06-03`) -> Cutover concluído em 22/11 via [infra/cutover_api_domain.py](../infra/cutover_api_domain.py) (`ApiMappingId=mqdslq` apontando para `u0mxrf6mnk` / `$default` / `ApiMappingKey=""`). API anterior `war28zsged` (`api-enthony-sd`) preservada intacta.
 
 ### 5.1. Snapshot Pré-Cutover da API (Referência para Rollback)
@@ -115,7 +115,12 @@ services/api/.venv/bin/python services/api/build_package.py
 - **Rollback da Lambda, Amplify `customHeaders`, Throttling, Logs e DynamoDB:** documentados individualmente na Seção 3 de [docs/AUDITORIA_SEGURANCA.md](AUDITORIA_SEGURANCA.md).
 
 ### 5.3. Verificação Pós-Manutenção e Retomada após Learner Lab
-As credenciais do AWS Academy Learner Lab expiram ao fim de cada sessão (~4h), porém os serviços já publicados continuam operando normalmente na AWS. Ao iniciar uma nova sessão administrativa, atualize `~/.aws/credentials` e valide a integridade somente leitura com:
+Quando a sessão do **AWS Academy Learner Lab** expira (~4h) e entra em estado `Stopped`, o Amplify Hosting, Route 53, Cognito e a borda do API Gateway permanecem acessíveis, **porém o Vocareum suspende a execução da função AWS Lambda (`HTTP 500` nas rotas integradas como `/health`, `/tasks` e `/pages`) até que o laboratório seja iniciado novamente**.
+
+Antes de utilizar o sistema em produção, demonstrar ao docente ou executar manutenção administrativa:
+1. Clique em **`Start Lab`** no AWS Academy Learner Lab e aguarde o indicador ficar verde (isso reativa imediatamente a execução da Lambda na AWS, mesmo sem renovar a CLI local).
+2. Caso também vá executar comandos `boto3`/AWS CLI localmente, atualize `~/.aws/credentials`.
+3. Valide a integridade ponta a ponta (`18/18 PASS`) com:
 ```bash
 services/api/.venv/bin/python tests/e2e/verify_prod_domains.py
 ```

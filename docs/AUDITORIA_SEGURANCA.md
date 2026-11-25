@@ -34,7 +34,7 @@
 - **Evidências reais concluídas em 23/11/2026:**
   - **Produção com 2 contas reais Cognito (`tests/e2e/smoke_api.py` — 33/33 PASS):** comprovadas rejeição de chamadas sem token/inválido/expirado (`401`), **rejeição de ID token real (`403`)** no API Gateway, rejeição de `ownerId` no payload (`400`), CRUD autenticado `/tasks` e `/pages`, conflito otimista (`409`), invisibilidade de registros alheios em listagens, **`404` em `GET`/`PATCH`/`DELETE` cruzados** (`Usuário B` -> `Usuário A`), preservação da integridade dos dados do `Usuário A` e limpeza dos registros temporários.
   - **Validação visual no navegador Firefox (`V-01` a `V-08` — aprovadas pelo usuário):** confirmados login PKCE, CRUD + `F5`, conflito `409` em 2 abas, logout com bloqueio de rotas protegidas e ausência de problemas com `CSP Report-Only` ou erros de autenticação/autorização no DevTools.
-  - **Suítes automatizadas locais:** **60/60 Pytest PASS** (Python `3.12.14`), **16/16 Vitest PASS**, `npm audit` com **0 vulnerabilities** e **33/33 Smoke HTTP local PASS**.
+  - **Suítes automatizadas locais:** **60/60 Pytest PASS** (Python `3.12.14`), **19/19 Vitest PASS** (7 arquivos), `npm audit` com **0 vulnerabilities** e **33/33 Smoke HTTP local PASS**.
 
 ---
 

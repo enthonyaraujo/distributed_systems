@@ -41,7 +41,7 @@
 ## 2. Evidências Separadas por Tipo
 
 ### 2.1. Validações Visuais Manuais em Produção (Informadas pelo Usuário — Firefox, 23/11/2026)
-> Executadas pessoalmente pelo autor no navegador **Firefox** contra `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br`, utilizando contas próprias e dados de demonstração.
+> Executadas pessoalmente pelo autor no navegador **Firefox** contra `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`jobId=3`), utilizando contas próprias e dados de demonstração. Após a publicação do redesign visual no Amplify (**`jobId=4`**, bundle `/assets/index-B1UuEFK5.js`, sem alterações em API/Lambda/Cognito/DynamoDB), recomenda-se repetir um passeio visual rápido no navegador antes da apresentação de 27/11/2026.
 
 | ID | Cenário Validado pelo Usuário | Critérios Cobertos | Resultado |
 |---|---|---|---|
@@ -66,14 +66,14 @@
 | CRUD `/pages` + Conflito `409` + Isolamento (`AC-P1-01`–`03`) | `201`/`200`/`200`; conflito otimista **`409`**; `Usuário B` não lista e recebe **`404`** em `GET`/`PATCH`/`DELETE`; `Usuário A` mantém `v2` íntegra, exclui (`204`) -> `404` | **11/11 PASS** |
 | **Total da suíte real em produção** | **Zero falhas; registros temporários excluídos ao final** | **33/33 PASS** |
 
-### 2.3. Evidências Automatizadas e de Segurança Verificadas pelo Agente (23/11/2026)
+### 2.3. Evidências Automatizadas e de Segurança Verificadas pelo Agente (23–25/11/2026)
 
 | Categoria | Verificação / Escopo | Resultado |
 |---|---|---|
-| **Domínios de Produção (`verify_prod_domains.py`)** | TLSv1.3 em ambos os domínios, 5 rotas SPA `200`, bundle oficial `/assets/index-BLG3afUM.js`, `/health` `200`, `401` em `/tasks` e `/pages`, CORS `204`, Cognito Hosted UI `200` | **18/18 PASS** |
+| **Domínios de Produção (`verify_prod_domains.py`)** | TLSv1.3 em ambos os domínios, 5 rotas SPA `200`, bundle oficial **`jobId=4`** (`/assets/index-B1UuEFK5.js` + `/favicon.svg` + 6/6 headers Amplify), `/health` `200`, `401` em `/tasks` e `/pages`, CORS `204`, Cognito Hosted UI `200` (com Learner Lab ativo) | **18/18 PASS** |
 | **Hardening AWS (Etapas 1–4)** | Lambda `v1` (`SEC-04` allowlist + `SEC-02` 4 headers, 2/2 páginas existentes compatíveis, 19/19 asserções reais); Amplify `customHeaders` com `CSP-Report-Only`; DynamoDB `DeletionProtectionEnabled=True` (sem PITR); API Gateway throttling `20/40` + Access Logs mínimos `/aws/apigateway/acadflow-http-api` (14 dias, zero PII/tokens); retenção Lambda 14 dias | **PASS** (detalhes em [docs/AUDITORIA_SEGURANCA.md](AUDITORIA_SEGURANCA.md)) |
 | **Backend local (`pytest` Python `3.12.14`)** | `services/api/tests` + `build_package.py` + `smoke_api.py` local (`33/33`) | **60/60 PASS** + ZIP 9 módulos |
-| **Frontend local (`vitest` / `tsc` / `vite` / `npm audit`)** | `apps/web` com `vitest@4.1.12` | **16/16 PASS** · build OK · **0 vulnerabilities** |
+| **Frontend local (`vitest` / `tsc` / `vite` / `npm audit`)** | `apps/web` com `vitest@4.1.12` (7 arquivos de teste) + auditoria UI/UX WCAG 2.2 AA ([docs/AUDITORIA_FRONTEND_UI_UX.md](AUDITORIA_FRONTEND_UI_UX.md)) | **19/19 PASS** · build OK · **0 vulnerabilities** |
 | **Diagnóstico AWS somente leitura (`check_aws_env.py`)** | Conta `****2503`, `us-east-1`, Hosted Zone `Z0906692126CHKWN9GQ2U` | **14/14 autorizado** |
 
 ### 2.4. Histórico de Provisionamento e Cutover na AWS (22/11/2026)
@@ -96,9 +96,10 @@
 
 ## 4. Roteiro Final da Apresentação Presencial (27/11/2026 — ~6 minutos)
 
-### Preparação 15 minutos antes da aula
-1. Executar `services/api/.venv/bin/python tests/e2e/verify_prod_domains.py` confirmando `18/18 PASS`.
-2. Deixar abertos: (a) Firefox em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` com DevTools (`Network`), (b) terminal limpo para `curl` em `/health` e `/tasks`, (c) PDF/pasta offline com as 6 capturas sanitizadas de contingência.
+### Preparação 15–20 minutos antes da aula
+1. **Obrigatório:** abrir o **AWS Academy Learner Lab**, clicar em **`Start Lab`** e aguardar o status ficar **verde** (quando o lab está `Stopped`, o Vocareum suspende a execução da Lambda `acadflow-api`).
+2. Executar `services/api/.venv/bin/python tests/e2e/verify_prod_domains.py` confirmando **`18/18 PASS`** (incluindo `GET /health -> 200 OK`).
+3. Deixar abertos: (a) Firefox em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` autenticado com dados de demonstração e DevTools (`Network`), (b) terminal limpo para `curl` em `/health` e `/tasks`, (c) PDF/pasta offline com as 6 capturas sanitizadas de contingência.
 
 ### Sequência Cronometrada (~6 min)
 
@@ -114,7 +115,7 @@
 ### Plano de Contingência (Oscilação ou Queda de Rede na Sala)
 1. **Wi-Fi instável:** rotear 4G/5G do celular apenas para os domínios HTTPS do AcadFlow (< 1 MB de tráfego na demonstração).
 2. **Sem internet na sala:** apresentar o **PDF/pasta offline com as 6 capturas sanitizadas** da Seção 3 (evidenciando ambos os domínios HTTPS, DevTools Network, persistência pós-`F5`, console AWS e a saída `33/33 PASS` de `smoke_api.py`). Caso necessário exibir a interface interativa offline, iniciar `python services/api/local_server.py` + `npm run dev` informando **explicitamente ao docente** que se trata de contingência local enquanto as capturas comprovam a publicação real.
-3. **Sessão do Learner Lab:** a aplicação publicada continua no ar independentemente da expiração da CLI local; renove a sessão do Learner Lab antes da aula apenas se desejar abrir o Console AWS ao vivo.
+3. **Sessão do Learner Lab (`Start Lab`):** enquanto Amplify, Route 53, Cognito e a borda do API Gateway permanecem ativos com o laboratório desligado, **a execução da AWS Lambda é pausada pelo Vocareum quando o Learner Lab está `Stopped` (`HTTP 500` nas rotas integradas)**. Mantenha o `Start Lab` ativo (verde) durante toda a janela da aula de **27/11/2026**; renovar `~/.aws/credentials` localmente só é necessário caso vá executar scripts `boto3`/CLI.
 
 ---
 

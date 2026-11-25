@@ -66,7 +66,7 @@ flowchart LR
 - **Gerenciamento de páginas e anotações (`/pages` e `/pages/:pageId`):** criação, listagem, renomeação, troca de ícone, edição estruturada e exclusão de páginas pessoais.
 - **Editor rico Tiptap:** títulos (`H1`–`H3`), negrito, itálico, listas com marcadores, listas numeradas, checklists, citações e desfazer/refazer, persistidos como JSON ProseMirror validado no servidor.
 - **Salvamento automático e controle de conflito:** debounce de 1,5 s com proteção contra envios simultâneos, alerta ao sair com alterações pendentes e concorrência otimista (`version` / `expectedVersion` -> `409 Conflict` com bloqueio do editor até recarga).
-- **Interface responsiva:** sidebar recolhível no desktop e menu *drawer* no mobile (`375 × 812 px`).
+- **Interface responsiva e acessível:** design system tokenizado (contraste WCAG 2.2 AA verificado), sidebar recolhível no desktop, *drawer* responsivo até `360 px`, diálogos nativos `<dialog>` e code-splitting de rotas.
 - **Isolamento por usuário:** cada conta acessa exclusivamente seus próprios registros (`ownerId = sub`), com retorno uniforme `404` para IDs inexistentes ou pertencentes a terceiros.
 
 ---
@@ -132,14 +132,14 @@ Acesse `http://localhost:5173`. *(No Windows PowerShell, ative o venv com `.\ser
 
 ## Testes e Validação
 
-Resultados verificados na última rodada completa (**23/11/2026**, Fedora Linux + produção AWS `us-east-1`):
+Resultados verificados na última rodada completa (**23–25/11/2026**, Fedora Linux + produção AWS `us-east-1`):
 
 | Suíte / Verificação | Escopo e Contexto | Resultado |
 |---|---|---|
 | **Backend unitário (`pytest`)** | `services/api/tests` em Python `3.12.14` (validação, allowlist Tiptap, headers, isolamento, DynamoDB) | **60/60 PASS** |
-| **Frontend unitário (`vitest`)** | `apps/web` (`tasksApi`, `pagesApi`, `oidcConfig`, `validation`, `pageValidation`, `autosaveState`) + `typecheck` + `build` + `npm audit` | **16/16 PASS** · `0 vulnerabilities` |
+| **Frontend unitário (`vitest`)** | `apps/web` (`tasksApi`, `pagesApi`, `oidcConfig`, `validation`, `pageValidation`, `autosaveState`, `formatters`) + `typecheck` + `build` + `npm audit` | **19/19 PASS** · `0 vulnerabilities` |
 | **API em produção (`smoke_api.py`)** | Testes HTTP reais contra `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br` com **2 contas reais Cognito** (`401`, ID token `403`, `400`, CRUD, `409`, isolamento `404`, limpeza) | **33/33 PASS** |
-| **Domínios institucionais (`verify_prod_domains.py`)** | Verificação somente leitura de TLSv1.3, 5 rotas SPA, bundle ao vivo, `/health`, `401`, CORS e Hosted UI | **18/18 PASS** |
+| **Domínios institucionais (`verify_prod_domains.py`)** | Verificação somente leitura de TLSv1.3, 5 rotas SPA, bundle ao vivo (`jobId=4`, `/assets/index-B1UuEFK5.js`), `/health`, `401`, CORS e Hosted UI (com Learner Lab ativo) | **18/18 PASS** |
 | **Validação visual em produção (`V-01` a `V-08`)** | Execução manual pelo autor no navegador Firefox em `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (PKCE, CRUD + `F5`, Tiptap + auto-save, `409` em 2 abas, mobile `375 × 812`, sidebar, logout, DevTools e `CSP Report-Only`) | **8/8 aprovadas** |
 
 ---
@@ -165,6 +165,7 @@ Resultados verificados na última rodada completa (**23/11/2026**, Fedora Linux 
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Arquitetura de 3 camadas, infraestrutura AWS publicada, contratos REST completos (`/health`, `/tasks`, `/pages`) e segurança. |
 | [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md) | Guia reproduzível de empacotamento, provisionamento, Amplify SPA Rewrite, cutover de DNS, manutenção e rollback. |
 | [docs/AUDITORIA_SEGURANCA.md](docs/AUDITORIA_SEGURANCA.md) | Relatório sanitizado de auditoria (OWASP Top 10 / API Top 10 / AWS / LGPD), hardening aplicado e riscos residuais. |
+| [docs/AUDITORIA_FRONTEND_UI_UX.md](docs/AUDITORIA_FRONTEND_UI_UX.md) | Auditoria profissional de Frontend, UI/UX, acessibilidade WCAG 2.2 AA e otimização de performance (Ondas 1–4). |
 | [docs/EVIDENCIAS.md](docs/EVIDENCIAS.md) | Matriz final dos 20 critérios de aceitação, histórico de testes, roteiro de apresentação (6 min) e checklist SIGAA. |
 | [docs/WORKSPACE_ACADFLOW.md](docs/WORKSPACE_ACADFLOW.md) | Especificação da evolução funcional P1 (Workspace, páginas e editor Tiptap). |
 | [docs/PLANO_PROJETO_FINAL.md](docs/PLANO_PROJETO_FINAL.md) | Planejamento inicial e cronograma base do projeto. |

@@ -1,6 +1,6 @@
 # Arquitetura e Contratos Técnicos — AcadFlow
 
-> **Última atualização:** 23/11/2026  
+> **Última atualização:** 25/11/2026  
 > **Referência oficial:** [docs/AVALIACAO.md](AVALIACAO.md) *(somente leitura)*.  
 > **Nota:** Os quatro requisitos oficiais do docente são: (1) arquitetura de três camadas, (2) comunicação por APIs baseadas em recursos, (3) DNS personalizado para aplicação e API em HTTPS e (4) autenticação de usuário e autorização de chamadas à API. A stack abaixo representa a escolha técnica desta implementação.
 
@@ -8,9 +8,9 @@
 
 ## 1. Infraestrutura Publicada na AWS (`us-east-1`, Conta `****2503`)
 
-| Camada / Serviço | Recurso Real | Configuração Ativa Verificada (23/11/2026) |
+| Camada / Serviço | Recurso Real | Configuração Ativa Verificada (23–25/11/2026) |
 |---|---|---|
-| **Camada 1 — Apresentação** | AWS Amplify Hosting `acadflow-web` (`dysbk8tmbj14k`) | Branch `main`, `jobId=3` (bundle `/assets/index-BLG3afUM.js`), SPA Rewrite `200 -> /index.html`, `customHeaders` de segurança (`HSTS`, `nosniff`, `DENY`, `Referrer-Policy`, `Permissions-Policy`, `CSP-Report-Only`), domínio `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AVAILABLE`, TLSv1.3 até 08/06/2027) |
+| **Camada 1 — Apresentação** | AWS Amplify Hosting `acadflow-web` (`dysbk8tmbj14k`) | Branch `main`, **`jobId=4`** (bundle `/assets/index-B1UuEFK5.js` + code-splitting de rotas + `/favicon.svg`; `jobId=3` preservado para rollback), SPA Rewrite `200 -> /index.html`, `customHeaders` de segurança (`HSTS`, `nosniff`, `DENY`, `Referrer-Policy`, `Permissions-Policy`, `CSP-Report-Only`), domínio `https://enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`AVAILABLE`, TLSv1.3 até 08/06/2027) |
 | **DNS & Certificados** | Amazon Route 53 (`Z0906692126CHKWN9GQ2U`) + ACM | Frontend: registro `A` ALIAS -> CloudFront do Amplify; API: `CNAME` -> `d-clp9xhs1n9.execute-api.us-east-1.amazonaws.com` (ACM `ISSUED`, TLSv1.3 até 03/06/2027); recursos de avaliações anteriores preservados intactos |
 | **Identidade** | Amazon Cognito `acadflow-users` (`us-east-1_tKA6pURyD`) | Login por e-mail, App Client público `acadflow-web-client` (`30f7tlmajc9moo6tr5q06pmkg3`, sem `client_secret`), OAuth2 **Authorization Code + PKCE (S256)**, `EnableTokenRevocation=true`, `PreventUserExistenceErrors=ENABLED`, Access/ID Token `30 min`, Refresh Token `1 dia`, Hosted UI `acadflow-enthony-sd.auth.us-east-1.amazoncognito.com` |
 | **Camada 2 — Entrada REST** | API Gateway HTTP API v2 `acadflow-http-api` (`u0mxrf6mnk`) | Domínio oficial `https://api.enthonyaraujo.grupo-03.sd.ufersa.dev.br` (`ApiMappingId=mqdslq`, stage `$default`), JWT Authorizer `acadflow-cognito-jwt` (`Issuer`, `Audience`, `AuthorizationScopes=["openid"]`), CORS restrito, throttling `20 req/s` (burst `40`), Access Logs JSON mínimos (`/aws/apigateway/acadflow-http-api`, retenção `14 dias`) |
